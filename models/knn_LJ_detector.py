@@ -93,7 +93,6 @@ class KNN_LJ_Detector(L.LightningModule):
             print(f"Faiss index built with {self.faiss_index.ntotal} vectors.")
 
     def forward(self, data):
-        # ... (This method remains unchanged) ...
         if self.faiss_index is None:
             raise RuntimeError("Faiss index not built. The trainer did not call the setup hook correctly.")
         
