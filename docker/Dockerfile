@@ -20,7 +20,7 @@ RUN echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$USERNAME && \
 WORKDIR /workspace
 
 # Copy only the requirements file
-COPY requirements.txt /workspace/
+COPY requirements-docker.txt /workspace/
 
 # Ensure the new user owns the workspace
 RUN chown -R $USERNAME:$USERNAME /workspace
@@ -33,7 +33,7 @@ ENV PATH="/home/${USERNAME}/.local/bin:${PATH}"
 
 # Install Python dependencies as the new user
 RUN python -m pip install --upgrade pip && \
-    pip install  --no-cache-dir --user -r ./requirements.txt
+    pip install  --no-cache-dir --user -r ./requirements-docker.txt
 
 RUN python -m pip install torch_sparse torch_scatter
 # Set default command

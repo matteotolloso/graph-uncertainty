@@ -10,6 +10,12 @@ from .mahalanobis_tester import mahalanobis_test
 from .knn_tester import knn_test
 from .energy_tester import energy_test
 from .knn_LJ_tester import knn_LJ_test
+from .gnn_safe_tester import gnnsafe_test
+# from .gebm_tester import gebm_test
+from .credal_frozen_trainer import credal_frozen_joint_train
+from .cagcn_trainer import cagcn_train
+
+
 
 # -- Do it automatically --
 

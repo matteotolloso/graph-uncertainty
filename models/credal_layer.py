@@ -20,6 +20,7 @@ class CredalLayer(torch.nn.Module):
 
         self.C = C
         self.margin = margin
+        self.input_dim = input_dim
         
         self.mh_layer = torch.nn.Linear(in_features=input_dim, out_features= 2 * C)
         

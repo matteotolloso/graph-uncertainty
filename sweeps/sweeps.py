@@ -21,9 +21,7 @@ metadata_cora      = {
     "num_neighbors": {"values": [-1]},
 }
 
-# --- Large Datasets (Mini-Batch Training) ---
-# A positive batch_size signals the loader to use NeighborLoader.
-# These values are chosen as sensible defaults for a ~40GB GPU.
+
 metadata_patents   = {
     "in_channels": {"values": [269]},  
     "out_channels": {"values": [3]},
@@ -48,7 +46,18 @@ metadata_coauthor  = {
     "batch_size": {"values": [-1]},
     "num_neighbors": {"values": [10]},
 }
-
+metadata_amazon_ratings = {
+    "in_channels":  {"values": [300]},  
+    "out_channels": {"values": [3]},    
+    "batch_size":   {"values": [-1]},   
+    "num_neighbors":{"values": [10]},
+}
+metadata_roman_empire = {
+    "in_channels":  {"values": [300]},  
+    "out_channels": {"values": [13]},   # ID classes = {5..17}
+    "batch_size":   {"values": [-1]},   
+    "num_neighbors":{"values": [10]},
+}
 
 
 sweep_vanilla = {
@@ -112,7 +121,7 @@ sweep_credal_LJ = {
 }
 
 
-sweep_mahalanobis_advanced = {
+sweep_mahalanobis = {
     "method": "grid",  
     "metric": {
         "name": "val_auroc", 
@@ -173,5 +182,41 @@ sweep_gnnsafe = {
     "parameters": {
         "K": {"values": [1, 2, 4, 8, 16]},
         "alpha": {"values": [0.1, 0.3, 0.5, 0.7, 0.9]}
+    },
+}
+
+sweep_gebm = {
+    "method": "grid",
+    "metric": {"name": "auroc_GEBM", "goal": "maximize"},
+    "parameters": {
+        # keep consistent with your other sweeps
+        "seed": {"values": [0, 1, 2, 3, 4]},
+    },
+}
+
+sweep_frozen = {
+    "method": "bayes",
+    "metric": {"name": "val_auroc_EU", "goal": "maximize"},
+    "parameters": {
+        "lr": {"distribution": "uniform", "min": 1e-5, "max": 1e-1},
+        "weight_decay": {"distribution": "uniform", "min": 1e-7, "max": 1e-1},
+        "seed": {"values": [0, 1, 2, 3, 4]},
+        "delta": {"distribution": "uniform", "min": 0.5, "max": 1.0},
+        "patience": {"values": [10]},
+    },
+}
+
+sweep_cagcn = {
+    "method": "bayes",
+    "metric": {"name": "val_auroc", "goal": "maximize"},
+    "parameters": {
+        "seed": {"values": [0,1,2,3,4]},
+        "lambda_cal": {"values": [0.25, 0.5, 0.75]},
+        "calib_hidden": {"values": [8,16,32]},
+        "calib_layers": {"values": [1,2]},
+        "lr": {"distribution": "uniform", "min": 1e-5, "max": 1e-1},
+        "weight_decay": {"distribution": "uniform", "min": 1e-7, "max": 1e-1},
+        "max_epochs": {"values": [200]},
+        "patience": {"values": [10]},
     },
 }

@@ -16,7 +16,7 @@ parser.add_argument(
     "-d", 
     "--dataset",
     type=str,
-    choices=["chameleon", "patents", "arxiv", "reddit2", "coauthor", "squirrel"],
+    choices=["chameleon", "patents", "arxiv", "reddit2", "coauthor", "squirrel", "amazon_ratings", "cora", "roman_empire"],
     default="squirrel",
     help="Dataset to run the sweep on.",
 )
@@ -33,7 +33,7 @@ parser.add_argument(
     "-m",
     "--model",
     type=str,
-    choices=["vanilla", "credal", "ensemble", "credal_LJ", "odin", "mahalanobis", "knn", "energy", "gnnsafe", "knn_LJ"],
+    choices=[ "vanilla", "credal", "ensemble", "credal_LJ", "odin", "mahalanobis", "knn", "energy", "gnnsafe", "knn_LJ", "gebm", "frozen", "cagcn" ],
     default="vanilla",
     help="Model to run the sweep on.",
 )
@@ -89,20 +89,26 @@ elif args.model == "odin":
     train_func = trainers.odin_test
 elif args.model == "mahalanobis":
     train_func = trainers.mahalanobis_test 
-elif args.model == "credal":
+elif args.model == "credal": # credal final
     train_func = trainers.credal_train
 elif args.model == "ensemble":
-    train_func = trainers.ensemble_test
+    train_func = trainers.ensemble_tester
 elif args.model == "credal_LJ":
     train_func = trainers.credal_LJ_train
 elif args.model == "knn_LJ": 
     train_func = trainers.knn_LJ_test 
 elif args.model == "knn": 
-    train_func = trainers.knn_tester 
+    train_func = trainers.knn_test 
 elif args.model == "energy": 
     train_func = trainers.energy_test
 elif args.model == "gnnsafe": 
     train_func = trainers.gnnsafe_test 
+elif args.model == "gebm":
+    train_func = trainers.gebm_test
+elif args.model == "frozen":
+    train_func = trainers.credal_frozen_joint_train
+elif args.model == "cagcn":
+    train_func = trainers.cagcn_train
 else:
     raise ValueError(f"Unsupported model: {args.model}")
 

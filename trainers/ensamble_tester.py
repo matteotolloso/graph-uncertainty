@@ -25,12 +25,10 @@ def ensemble_tester(project_name, dataset_name, **kwargs):
     config = wandb.config
 
     # --- 1. Find the Best Checkpoints ---
-    # The number of models in the ensemble is a key hyperparameter
     num_ensemble_models = config.get("M", 5) 
     checkpoint_paths = find_best_checkpoints(dataset_name, num_ensemble_models)
 
     # --- 2. Instantiate the Ensemble Model ---
-    # We use the paths found above. The model class must be VanillaGNN.
     ensemble_model = credal_Ensemble(
         model_class=VanillaGNN,
         checkpoint_paths=checkpoint_paths

@@ -85,7 +85,6 @@ class credal_GNN_t(L.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        ### REVISED VALIDATION STEP ###
         q_L, q_U = self(batch)
 
         # Select the outputs and labels for the validation nodes

@@ -4,3 +4,4 @@ wandb
 graph-uncertainty
 checkpoints
 data-ub
+graph_ebm/
