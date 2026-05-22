@@ -211,12 +211,17 @@ def load_reddit2(DATASET_STORAGE_PATH, config):
         print("Using DataLoader for full-batch training.")
         train_loader = DataLoader([data], batch_size=1, shuffle=False)
     else:
-        print(f"Using NeighborLoader for mini-batch training with batch size {config['batch_size']}.")
+        batch_size = int(config["batch_size"])
+        num_layers = int(config.get("num_layers", 2))
+        num_neighbors = int(config.get("num_neighbors", 10))
+        neighbor_sizes = [num_neighbors] * num_layers
+
+        print(f"Using NeighborLoader for mini-batch training with batch size {batch_size}.")
         train_loader = NeighborLoader(
             data,
             input_nodes=data.train_mask, # Crucial: sample starting nodes from the train mask
-            batch_size=config["batch_size"],
-            num_neighbors=[int(config.get('num_neighbors', 10))] * int(config.get("num_layers", 2)),
+            batch_size=batch_size,
+            num_neighbors=neighbor_sizes,
             shuffle=True
         )
 

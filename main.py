@@ -33,7 +33,23 @@ parser.add_argument(
     "-m",
     "--model",
     type=str,
-    choices=[ "vanilla", "credal", "ensemble", "credal_LJ", "odin", "mahalanobis", "knn", "energy", "gnnsafe", "knn_LJ", "gebm", "frozen", "cagcn" ],
+    choices=[
+        "vanilla",
+        "credal",
+        "ensemble",
+        "credal_LJ",
+        "credal_LJ_dual_head",
+        "credal_LJ_dual_head_constrained",
+        "odin",
+        "mahalanobis",
+        "knn",
+        "energy",
+        "gnnsafe",
+        "knn_LJ",
+        "gebm",
+        "frozen",
+        "cagcn",
+    ],
     default="vanilla",
     help="Model to run the sweep on.",
 )
@@ -95,6 +111,10 @@ elif args.model == "ensemble":
     train_func = trainers.ensemble_tester
 elif args.model == "credal_LJ":
     train_func = trainers.credal_LJ_train
+elif args.model == "credal_LJ_dual_head":
+    train_func = trainers.credal_LJ_dual_head_train
+elif args.model == "credal_LJ_dual_head_constrained":
+    train_func = trainers.credal_LJ_dual_head_constrained_train
 elif args.model == "knn_LJ": 
     train_func = trainers.knn_LJ_test 
 elif args.model == "knn": 

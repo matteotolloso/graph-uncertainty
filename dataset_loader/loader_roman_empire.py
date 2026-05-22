@@ -6,7 +6,7 @@ from torch_geometric.data import Data
 from torch_geometric.loader import NeighborLoader, DataLoader as GeoDataLoader
 
 def load_roman_empire(npz_path, config, split_idx=0, ood_classes=tuple(range(0,5)), id_classes=tuple(range(5,18))):
-    z = np.load(npz_path + 'roman_empire/roman_empire.npz', allow_pickle=True)
+    z = np.load(npz_path + 'roman_empire/raw/roman_empire.npz', allow_pickle=True)
 
     # 1) Core tensors
     x_np = np.asarray(z["node_features"], dtype=np.float32)             # (N,F)
@@ -73,15 +73,17 @@ def load_roman_empire(npz_path, config, split_idx=0, ood_classes=tuple(range(0,5
         print("Using GeoDataLoader for full-batch training.")
         train_loader = GeoDataLoader([data], batch_size=1, shuffle=False)
     else:
+        neighbor_sizes = [num_neighbors] * num_layers
+
         print(f"Using NeighborLoader with batch_size={batch_size}.")
         train_loader = NeighborLoader(
             data,
             input_nodes=data.train_mask,
             batch_size=batch_size,
-            num_neighbors=[num_neighbors]*num_layers,
+            num_neighbors=neighbor_sizes,
             shuffle=True
         )
 
-    val_loader  = GeoDataLoader([data], batch_size=1, shuffle=False)
+    val_loader = GeoDataLoader([data], batch_size=1, shuffle=False)
     test_loader = GeoDataLoader([data], batch_size=1, shuffle=False)
     return train_loader, val_loader, test_loader

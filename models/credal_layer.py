@@ -15,24 +15,29 @@ class CredalLayer(torch.nn.Module):
             The number of classes in output
     """
 
-    def __init__(self, input_dim, C, margin=0.0):
+    def __init__(self, input_dim, C, margin=0.0, hidden_dim=None):
         super().__init__()
 
         self.C = C
         self.margin = margin
         self.input_dim = input_dim
+        self.hidden_dim = hidden_dim or input_dim
         
-        self.mh_layer = torch.nn.Linear(in_features=input_dim, out_features= 2 * C)
+        self.mh_layer = torch.nn.Sequential(
+            torch.nn.Linear(in_features=input_dim, out_features=self.hidden_dim),
+            torch.nn.Sigmoid(),
+            torch.nn.Linear(in_features=self.hidden_dim, out_features=2 * C),
+        )
         
 
     def forward(self, z):
         
         assert len(z.shape) == 2, "Input must be a 2D tensor"
-        assert z.shape[1] == self.mh_layer.in_features, f"Input shape must be (num_nodes, {self.mh_layer.in_features})"
+        assert z.shape[1] == self.input_dim, f"Input shape must be (num_nodes, {self.input_dim})"
         
         C = self.C
         
-        # Apply the mh_layer (first layer of the credal structure)
+        # Apply the two-layer head of the credal structure
         mh = self.mh_layer(z)
 
         assert len(mh.shape) == 2, "Output of mh_layer must be a 2D tensor"

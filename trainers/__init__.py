@@ -6,6 +6,8 @@ from .odin_tester import odin_test
 from .credal_trainer import credal_train
 from .ensamble_tester import ensemble_tester
 from .credal_LJ_trainer import credal_LJ_train
+from .credal_LJ_dual_head_trainer import credal_LJ_dual_head_train
+from .credal_LJ_dual_head_constrained_trainer import credal_LJ_dual_head_constrained_train
 from .mahalanobis_tester import mahalanobis_test
 from .knn_tester import knn_test
 from .energy_tester import energy_test

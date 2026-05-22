@@ -1,10 +1,28 @@
+import os
+
+# Keep numerical libraries from creating their own full-size thread pools inside
+# each multiprocessing worker. Otherwise, even a small process pool can occupy
+# every CPU core through nested BLAS/OpenMP threads.
+for env_var in (
+    "OMP_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+):
+    os.environ.setdefault(env_var, "1")
+
+import ctypes
+import multiprocessing
+
 import numpy as np
 from scipy.optimize import minimize, linprog
-# from scipy.optimize import linprog # Not used in the provided code
 from tqdm import tqdm
-import multiprocessing
-import ctypes
-import os # To get cpu count
+
+try:
+    from threadpoolctl import threadpool_limits
+except ImportError:
+    threadpool_limits = None
 
 
 # Define shared memory array wrappers for easier handling
@@ -14,6 +32,24 @@ shared_upper_bound = None
 shared_optimal_probabilities = None
 shared_entropy_values = None
 shared_params = {} # To hold shape, C, objective etc.
+shared_threadpool_limits = None
+
+
+def available_cpu_count():
+    """
+    Return the number of CPUs this process is allowed to use.
+
+    os.cpu_count() reports the whole machine, while sched_getaffinity respects
+    cpusets/slurm/docker affinity when available.
+    """
+    if hasattr(os, "sched_getaffinity"):
+        return len(os.sched_getaffinity(0))
+    return os.cpu_count() or 1
+
+
+def default_num_workers():
+    """Use one quarter of the available CPU cores, with at least one worker."""
+    return max(1, available_cpu_count() // 6)
 
 def entropy(q):
     # Use np.maximum instead of clip for slightly better performance sometimes
@@ -22,9 +58,6 @@ def entropy(q):
 
 def constraint_sum(q):
     return np.sum(q) - 1
-
-from scipy.optimize import minimize, linprog
-import numpy as np
 
 def initial_guess(l, u, delta=1e-5):
     """
@@ -105,7 +138,10 @@ def min_max_entropy(l, u, x0, delta=1e-5):
 def init_worker(lower_bound_base, upper_bound_base, min_entropy_vals_base, max_entropy_val_base, params):
     global shared_lower_bound, shared_upper_bound
     global min_shared_entropy_values, max_shared_entropy_values
-    global shared_params
+    global shared_params, shared_threadpool_limits
+
+    if threadpool_limits is not None:
+        shared_threadpool_limits = threadpool_limits(limits=1)
 
     shared_params.update(params) # Store shape, C, objective etc.
     num_nodes, C = shared_params['shape']
@@ -151,7 +187,8 @@ def calculate_entropy(lower_bound, upper_bound, delta=1e-5, num_workers=None):
         lower_bound (np.ndarray): Lower bounds array with shape (num_nodes, C).
         upper_bound (np.ndarray): Upper bounds array with shape (num_nodes, C).
         delta (float): Small epsilon for clipping upper bounds away from zero.
-        num_workers (int, optional): Number of worker processes. Defaults to the number of CPU cores.
+        num_workers (int, optional): Number of worker processes. Defaults to
+            one quarter of the CPUs available to this process.
 
     Returns:
         tuple: (min_entropy_values, max_entropy_values) with shape (num_nodes,) each.
@@ -178,8 +215,14 @@ def calculate_entropy(lower_bound, upper_bound, delta=1e-5, num_workers=None):
     num_nodes, C = lower_bound.shape
 
     if num_workers is None:
-        num_workers = os.cpu_count()
-        print(f"Using {num_workers} worker processes.")
+        num_workers = default_num_workers()
+    else:
+        num_workers = max(1, int(num_workers))
+    num_workers = min(num_workers, num_nodes)
+    print(
+        f"Using {num_workers} worker processes "
+        f"(available CPUs: {available_cpu_count()}, default: floor(available / 4))."
+    )
 
     # --- Create Shared Memory Arrays ---
     # Use double precision floats (np.float64 -> ctypes.c_double)

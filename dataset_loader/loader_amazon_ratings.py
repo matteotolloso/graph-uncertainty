@@ -82,15 +82,17 @@ def load_amazon_ratings(npz_path, config, split_idx=0, ood_classes=(0,1), id_cla
         print("Using DataLoader for full-batch training.")
         train_loader = DataLoader([data], batch_size=1, shuffle=False)
     else:
+        neighbor_sizes = [num_neighbors] * num_layers
+
         print(f"Using NeighborLoader for mini-batch training with batch size {batch_size}.")
         train_loader = NeighborLoader(
             data,
             input_nodes=data.train_mask,
             batch_size=batch_size,
-            num_neighbors=[num_neighbors]*num_layers,
+            num_neighbors=neighbor_sizes,
             shuffle=True
         )
 
-    val_loader  = DataLoader([data], batch_size=1, shuffle=False)
+    val_loader = DataLoader([data], batch_size=1, shuffle=False)
     test_loader = DataLoader([data], batch_size=1, shuffle=False)
     return train_loader, val_loader, test_loader
