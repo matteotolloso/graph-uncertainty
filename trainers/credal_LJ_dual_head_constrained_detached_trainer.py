@@ -8,18 +8,20 @@ import wandb
 from lightning.pytorch.callbacks import EarlyStopping
 from lightning.pytorch.loggers import WandbLogger
 
-from models.credal_gnn_lj_dual_head_constrained import credal_GNN_LJ_DualHeadConstrained
+from models.credal_gnn_lj_dual_head_constrained_detached import (
+    credal_GNN_LJ_DualHeadConstrainedDetached,
+)
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from dataset_loader.dataset_loader import dataset_loader
 
 
-def credal_LJ_dual_head_constrained_train(project_name, dataset_name, **kwargs):
+def credal_LJ_dual_head_constrained_detached_train(project_name, dataset_name, **kwargs):
     wandb.init(project=project_name)
     config = wandb.config
     wandb_logger = WandbLogger(project=project_name)
 
-    model = credal_GNN_LJ_DualHeadConstrained(
+    model = credal_GNN_LJ_DualHeadConstrainedDetached(
         gnn_type=config["gnn_type"],
         in_channels=config["in_channels"],
         out_channels=config["out_channels"],

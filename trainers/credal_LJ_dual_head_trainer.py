@@ -26,7 +26,7 @@ def credal_LJ_dual_head_train(project_name, dataset_name, **kwargs):
         hidden_channels=config["hidden_channels"],
         num_layers=config["num_layers"],
         lr=config["lr"],
-        weight_decay=config["weight_decay"],
+        weight_decay=config.get("weight_decay", 0.0),
         delta=config["delta"],
         lambda_cls=config.get("lambda_cls", 1.0),
     )
@@ -37,7 +37,7 @@ def credal_LJ_dual_head_train(project_name, dataset_name, **kwargs):
         logger=wandb_logger,
         log_every_n_steps=1,
         callbacks=[
-            EarlyStopping(monitor="val_loss", patience=config["patience"]),
+            EarlyStopping(monitor="val_f1_cls", patience=config["patience"], mode="max"),
         ],
     )
 

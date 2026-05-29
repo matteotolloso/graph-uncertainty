@@ -37,8 +37,8 @@ metadata_arxiv     = {
 metadata_reddit2   = {
     "in_channels": {"values": [602]},  
     "out_channels": {"values": [30]},
-    "batch_size": {"values": [64]},
-    "num_neighbors": {"values": [10]},
+    "batch_size": {"values": [-1]},
+    "num_neighbors": {"values": [8]},
 }
 metadata_coauthor  = {
     "in_channels": {"values": [6805]}, 
@@ -128,14 +128,31 @@ sweep_credal_LJ_dual_head = {
         "goal": "maximize"
     },
     "parameters": {
-        "lr": {"distribution": "uniform", "min": 1e-5, "max": 1e-1},
-        "hidden_channels": {"values": [64, 128]},
-        "num_layers": {"values": [2, 3]},
-        "weight_decay": {"distribution": "uniform", "min": 1e-7, "max": 1e-1},
+        "lr": {"distribution": "uniform", "min": 1e-5, "max": 1e-2},
+        "hidden_channels": {"values": [64]},
+        "num_layers": {"values": [2]},
         "delta": {"distribution": "uniform", "min": 0.5, "max": 1.0},
         "lambda_cls": {"distribution": "uniform", "min": 0.1, "max": 2.0},
         "gnn_type": {"values": ["GCN", "SAGE"]},
-        "patience": {"values": [10]},
+        "patience": {"values": [20]},
+    },
+}
+
+
+sweep_credal_LJ_dual_head_detached = {
+    "method": "bayes",
+    "metric": {
+        "name": "val_f1_cls",
+        "goal": "maximize"
+    },
+    "parameters": {
+        "lr": {"distribution": "uniform", "min": 1e-5, "max": 1e-2},
+        "hidden_channels": {"values": [64]},
+        "num_layers": {"values": [2]},
+        "delta": {"distribution": "uniform", "min": 0.5, "max": 1.0},
+        "lambda_cls": {"distribution": "uniform", "min": 0.1, "max": 2.0},
+        "gnn_type": {"values": ["GCN", "SAGE"]},
+        "patience": {"values": [20]},
     },
 }
 
@@ -148,14 +165,33 @@ sweep_credal_LJ_dual_head_constrained = {
     },
     "parameters": {
         "lr": {"distribution": "uniform", "min": 1e-5, "max": 1e-1},
-        "hidden_channels": {"values": [64, 128]},
-        "num_layers": {"values": [2, 3]},
+        "hidden_channels": {"values": [64]},
+        "num_layers": {"values": [2]},
         "weight_decay": {"distribution": "uniform", "min": 1e-7, "max": 1e-1},
         "delta": {"distribution": "uniform", "min": 0.5, "max": 1.0},
         "lambda_cls": {"distribution": "uniform", "min": 0.5, "max": 2.0},
         "lambda_cons": {"values": [0.01, 0.05, 0.1, 0.25]},
         "gnn_type": {"values": ["GCN", "SAGE"]},
         "patience": {"values": [10]},
+    },
+}
+
+
+sweep_credal_LJ_dual_head_constrained_detached = {
+    "method": "bayes",
+    "metric": {
+        "name": "val_f1_cls",
+        "goal": "maximize"
+    },
+    "parameters": {
+        "lr": {"distribution": "uniform", "min": 1e-5, "max": 1e-2},
+        "hidden_channels": {"values": [64]},
+        "num_layers": {"values": [2]},
+        "delta": {"distribution": "uniform", "min": 0.5, "max": 1.0},
+        "lambda_cls": {"distribution": "uniform", "min": 0.1, "max": 2.0},
+        "lambda_cons": {"values": [0.01, 0.05, 0.1, 0.25]},
+        "gnn_type": {"values": ["GCN", "SAGE"]},
+        "patience": {"values": [20]},
     },
 }
 

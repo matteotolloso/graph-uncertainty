@@ -39,7 +39,9 @@ parser.add_argument(
         "ensemble",
         "credal_LJ",
         "credal_LJ_dual_head",
+        "credal_LJ_dual_head_detached",
         "credal_LJ_dual_head_constrained",
+        "credal_LJ_dual_head_constrained_detached",
         "odin",
         "mahalanobis",
         "knn",
@@ -113,8 +115,12 @@ elif args.model == "credal_LJ":
     train_func = trainers.credal_LJ_train
 elif args.model == "credal_LJ_dual_head":
     train_func = trainers.credal_LJ_dual_head_train
+elif args.model == "credal_LJ_dual_head_detached":
+    train_func = trainers.credal_LJ_dual_head_detached_train
 elif args.model == "credal_LJ_dual_head_constrained":
     train_func = trainers.credal_LJ_dual_head_constrained_train
+elif args.model == "credal_LJ_dual_head_constrained_detached":
+    train_func = trainers.credal_LJ_dual_head_constrained_detached_train
 elif args.model == "knn_LJ": 
     train_func = trainers.knn_LJ_test 
 elif args.model == "knn": 
