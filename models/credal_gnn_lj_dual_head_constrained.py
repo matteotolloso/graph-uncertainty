@@ -63,10 +63,11 @@ class credal_GNN_LJ_DualHeadConstrained(credal_GNN_LJ_DualHead):
     def training_step(self, batch, batch_idx):
         q_L, q_U, logits_cls = self(batch)
 
-        y_train = batch.y[batch.train_mask]
-        q_U_train = q_U[batch.train_mask]
-        q_L_train = q_L[batch.train_mask]
-        logits_cls_train = logits_cls[batch.train_mask]
+        train_mask = self._split_mask(batch, "train")
+        y_train = batch.y[train_mask]
+        q_U_train = q_U[train_mask]
+        q_L_train = q_L[train_mask]
+        logits_cls_train = logits_cls[train_mask]
 
         loss, credal_loss, ce_cls, consistency_loss, train_labels = self._shared_losses(
             q_L_train, q_U_train, logits_cls_train, y_train
@@ -83,7 +84,7 @@ class credal_GNN_LJ_DualHeadConstrained(credal_GNN_LJ_DualHead):
         f1_U = self._f1_score(train_preds_U, train_labels)
         f1_L = self._f1_score(train_preds_L, train_labels)
 
-        num_train_nodes = batch.train_mask.sum()
+        num_train_nodes = train_mask.sum()
         self.log("train_loss", loss, batch_size=num_train_nodes)
         self.log("train_credal_loss", credal_loss, batch_size=num_train_nodes)
         self.log("train_ce_cls", ce_cls, batch_size=num_train_nodes)
@@ -99,44 +100,52 @@ class credal_GNN_LJ_DualHeadConstrained(credal_GNN_LJ_DualHead):
     def validation_step(self, batch, batch_idx):
         q_L, q_U, logits_cls = self(batch)
 
-        q_L_val = q_L[batch.val_mask].detach()
-        q_U_val = q_U[batch.val_mask].detach()
-        logits_cls_val = logits_cls[batch.val_mask].detach()
-        y_val = batch.y[batch.val_mask].detach()
-
-        if self.ood_in_val:
-            TU, AU, EU = compute_uncertainties(q_L_val.cpu().numpy(), q_U_val.cpu().numpy())
-            targets = (1 - y_val.sum(axis=1)).long()
-            auroc_EU = self._auroc_score(torch.from_numpy(EU).to(self.device), targets)
-            auroc_AU = self._auroc_score(torch.from_numpy(AU).to(self.device), targets)
-            auroc_TU = self._auroc_score(torch.from_numpy(TU).to(self.device), targets)
-            self.log("val_auroc_EU", auroc_EU, prog_bar=True)
-            self.log("val_auroc_AU", auroc_AU)
-            self.log("val_auroc_TU", auroc_TU)
+        val_mask = self._split_mask(batch, "val")
+        q_L_val = q_L[val_mask].detach()
+        q_U_val = q_U[val_mask].detach()
+        logits_cls_val = logits_cls[val_mask].detach()
+        y_val = batch.y[val_mask].detach()
 
         id_mask_in_val = y_val.sum(axis=1) == 1
-        loss, credal_loss, ce_cls, consistency_loss, val_labels = self._shared_losses(
-            q_L_val[id_mask_in_val],
-            q_U_val[id_mask_in_val],
-            logits_cls_val[id_mask_in_val],
-            y_val[id_mask_in_val],
-        )
+        batch_size = id_mask_in_val.sum()
+        if id_mask_in_val.any():
+            loss, credal_loss, ce_cls, consistency_loss, val_labels = self._shared_losses(
+                q_L_val[id_mask_in_val],
+                q_U_val[id_mask_in_val],
+                logits_cls_val[id_mask_in_val],
+                y_val[id_mask_in_val],
+            )
 
-        val_preds_cls = torch.argmax(logits_cls_val[id_mask_in_val], dim=1)
-        val_preds_U = torch.argmax(q_U_val[id_mask_in_val], dim=1)
-        val_preds_L = torch.argmax(q_L_val[id_mask_in_val], dim=1)
+            val_preds_cls = torch.argmax(logits_cls_val[id_mask_in_val], dim=1)
+            val_preds_U = torch.argmax(q_U_val[id_mask_in_val], dim=1)
+            val_preds_L = torch.argmax(q_L_val[id_mask_in_val], dim=1)
 
-        val_acc_cls = (val_preds_cls == val_labels).float().mean()
-        val_f1_cls = self._f1_score(val_preds_cls, val_labels)
-        val_f1_U = self._f1_score(val_preds_U, val_labels)
-        val_f1_L = self._f1_score(val_preds_L, val_labels)
+            val_acc_cls = (val_preds_cls == val_labels).float().mean()
+            self.log("val_loss", loss, prog_bar=True, batch_size=batch_size, on_step=False, on_epoch=True)
+            self.log("val_credal_loss", credal_loss, batch_size=batch_size, on_step=False, on_epoch=True)
+            self.log("val_ce_cls", ce_cls, batch_size=batch_size, on_step=False, on_epoch=True)
+            self.log("val_consistency_loss", consistency_loss, batch_size=batch_size, on_step=False, on_epoch=True)
+            self.log("val_acc_cls", val_acc_cls, batch_size=batch_size, on_step=False, on_epoch=True)
+        else:
+            loss = None
+            val_labels = torch.empty(0, dtype=torch.long, device=self.device)
+            val_preds_cls = torch.empty(0, dtype=torch.long, device=self.device)
+            val_preds_U = torch.empty(0, dtype=torch.long, device=self.device)
+            val_preds_L = torch.empty(0, dtype=torch.long, device=self.device)
 
-        self.log("val_loss", loss, prog_bar=True)
-        self.log("val_credal_loss", credal_loss)
-        self.log("val_ce_cls", ce_cls)
-        self.log("val_consistency_loss", consistency_loss)
-        self.log("val_acc_cls", val_acc_cls)
-        self.log("val_f1_cls", val_f1_cls, prog_bar=True)
-        self.log("val_f1_U", val_f1_U)
-        self.log("val_f1_L", val_f1_L)
+        output = {
+            "val_preds_cls": val_preds_cls.detach(),
+            "val_preds_U": val_preds_U.detach(),
+            "val_preds_L": val_preds_L.detach(),
+            "val_labels": val_labels.detach(),
+        }
+        if self.ood_in_val:
+            TU, AU, EU = compute_uncertainties(q_L_val, q_U_val)
+            output.update({
+                "TU": TU.detach(),
+                "AU": AU.detach(),
+                "EU": EU.detach(),
+                "targets": (1 - y_val.sum(axis=1)).long().detach(),
+            })
+        self._validation_outputs.append(output)
         return loss

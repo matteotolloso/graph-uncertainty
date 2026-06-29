@@ -18,6 +18,7 @@ def cagcn_train(project_name, dataset_name, **kwargs):
     """
     wandb.init(project=project_name, job_type="train_cagcn")
     config = wandb.config
+    L.seed_everything(42, workers=True)
 
     # select a pretrained checkpoint by seed index
     ckpt_path = find_best_checkpoints(dataset_name, num_models=5)[config["seed"]]
@@ -38,11 +39,17 @@ def cagcn_train(project_name, dataset_name, **kwargs):
     trainer = L.Trainer(
         devices="auto",
         accelerator="auto",
+        deterministic=True,
+        num_sanity_val_steps=config.get("num_sanity_val_steps", 0),
         logger=logger,
         log_every_n_steps=1,
         max_epochs=config.get("max_epochs", 200),
         callbacks=[
-            EarlyStopping(monitor="val_nll", patience=config["patience"]),
+            EarlyStopping(
+                monitor=config.get("monitor", "val_nll"),
+                patience=config["patience"],
+                mode=config.get("mode", "min"),
+            ),
         ],
     )
 

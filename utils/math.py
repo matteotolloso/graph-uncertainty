@@ -43,6 +43,14 @@ def actually_reachable(q_L, q_U):
     Returns:
         tuple: (q_L_star, q_U_star), reachable interval probabilities, each of shape (num_nodes, C) or (C,)
     """
+    if isinstance(q_L, torch.Tensor):
+        sum_q_L = torch.sum(q_L, dim=-1, keepdim=True)
+        sum_q_U = torch.sum(q_U, dim=-1, keepdim=True)
+
+        q_L_star = torch.maximum(q_L, 1 - (sum_q_U - q_U))
+        q_U_star = torch.minimum(q_U, 1 - (sum_q_L - q_L))
+        return q_L_star, q_U_star
+
     sum_q_L = np.sum(q_L, axis=-1, keepdims=True)
     sum_q_U = np.sum(q_U, axis=-1, keepdims=True)
 
@@ -106,13 +114,20 @@ def compute_uncertainties(q_L, q_U):
         TU, AU, EU (tuple[np.Array]): where TU is total uncertainty, AU is aleatoric uncertainty, and EU is epistemic uncertainty.
     """
     # Ensure tensors have the same shape
-    assert isinstance(q_L, np.ndarray) and isinstance(q_U, np.ndarray), f"q_L and q_U must be numpy arrays, but got {type(q_L)} and {type(q_U)}"
+    assert isinstance(q_L, (np.ndarray, torch.Tensor)) and isinstance(q_U, (np.ndarray, torch.Tensor)), f"q_L and q_U must be arrays or tensors, but got {type(q_L)} and {type(q_U)}"
     assert q_L.shape == q_U.shape, f"Shapes of q_L and q_U must match, but got {q_L.shape} and {q_U.shape}"
     assert len(q_L.shape) == 2, f"q_L and q_U must be 2D tensors, but got shapes {q_L.shape} and {q_U.shape}"
 
+    if isinstance(q_L, torch.Tensor):
+        q_L = q_L.detach()
+        q_U = q_U.detach()
+
     q_L_star, q_U_star = actually_reachable(q_L, q_U) # shape: [num_nodes, C] each
-    
-    assert np.all(q_L_star <= q_U_star + 1e-6), "Lower bounds must be less than or equal to upper bounds"
+
+    if isinstance(q_L_star, torch.Tensor):
+        assert torch.all(q_L_star <= q_U_star + 1e-6), "Lower bounds must be less than or equal to upper bounds"
+    else:
+        assert np.all(q_L_star <= q_U_star + 1e-6), "Lower bounds must be less than or equal to upper bounds"
 
     AU, TU = calculate_entropy(q_L_star, q_U_star) 
     

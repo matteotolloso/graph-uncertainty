@@ -25,8 +25,8 @@ metadata_cora      = {
 metadata_patents   = {
     "in_channels": {"values": [269]},  
     "out_channels": {"values": [3]},
-    "batch_size": {"values": [-1]},
-    "num_neighbors": {"values": [10]},
+    "batch_size": {"values": [16384]},
+    "num_neighbors": {"values": [8]},
 }
 metadata_arxiv     = {
     "in_channels": {"values": [128]},  
@@ -37,7 +37,7 @@ metadata_arxiv     = {
 metadata_reddit2   = {
     "in_channels": {"values": [602]},  
     "out_channels": {"values": [30]},
-    "batch_size": {"values": [-1]},
+    "batch_size": {"values": [2**14]},
     "num_neighbors": {"values": [8]},
 }
 metadata_coauthor  = {
@@ -70,6 +70,9 @@ sweep_vanilla = {
         "weight_decay": {"distribution": "uniform", "min": 1e-7, "max": 1e-1},
         "gnn_type": {"values": ["GCN", "SAGE"]},
         "patience": {"values": [30]},
+        "monitor": {"values": ["val_f1"]},
+        "mode": {"values": ["max"]},
+        "num_sanity_val_steps": {"values": [0]},
     }
 }
 
@@ -99,6 +102,9 @@ sweep_credal = {
         "delta": {"distribution": "uniform", "min": 0.5, "max": 1.0},
         "gnn_type": {"values": ["GCN", "SAGE"]},
         "patience": {"values": [10]},
+        "monitor": {"values": ["val_auroc_EU"]},
+        "mode": {"values": ["max"]},
+        "num_sanity_val_steps": {"values": [0]},
     },
 }
 
@@ -117,6 +123,9 @@ sweep_credal_LJ = {
         "delta": {"distribution": "uniform", "min": 0.5, "max": 1.0},
         "gnn_type": {"values": ["GCN", "SAGE"]},
         "patience": {"values": [10]},
+        "monitor": {"values": ["val_auroc_EU"]},
+        "mode": {"values": ["max"]},
+        "num_sanity_val_steps": {"values": [0]},
     },
 }
 
@@ -135,6 +144,9 @@ sweep_credal_LJ_dual_head = {
         "lambda_cls": {"distribution": "uniform", "min": 0.1, "max": 2.0},
         "gnn_type": {"values": ["GCN", "SAGE"]},
         "patience": {"values": [20]},
+        "monitor": {"values": ["val_auroc_TU"]},
+        "mode": {"values": ["max"]},
+        "num_sanity_val_steps": {"values": [0]},
     },
 }
 
@@ -142,7 +154,7 @@ sweep_credal_LJ_dual_head = {
 sweep_credal_LJ_dual_head_detached = {
     "method": "bayes",
     "metric": {
-        "name": "val_f1_cls",
+        "name": "val_auroc_TU",
         "goal": "maximize"
     },
     "parameters": {
@@ -153,6 +165,9 @@ sweep_credal_LJ_dual_head_detached = {
         "lambda_cls": {"distribution": "uniform", "min": 0.1, "max": 2.0},
         "gnn_type": {"values": ["GCN", "SAGE"]},
         "patience": {"values": [20]},
+        "monitor": {"values": ["val_auroc_TU"]},
+        "mode": {"values": ["max"]},
+        "num_sanity_val_steps": {"values": [0]},
     },
 }
 
@@ -173,6 +188,9 @@ sweep_credal_LJ_dual_head_constrained = {
         "lambda_cons": {"values": [0.01, 0.05, 0.1, 0.25]},
         "gnn_type": {"values": ["GCN", "SAGE"]},
         "patience": {"values": [10]},
+        "monitor": {"values": ["val_f1_cls"]},
+        "mode": {"values": ["max"]},
+        "num_sanity_val_steps": {"values": [0]},
     },
 }
 
@@ -192,6 +210,9 @@ sweep_credal_LJ_dual_head_constrained_detached = {
         "lambda_cons": {"values": [0.01, 0.05, 0.1, 0.25]},
         "gnn_type": {"values": ["GCN", "SAGE"]},
         "patience": {"values": [20]},
+        "monitor": {"values": ["val_f1_cls"]},
+        "mode": {"values": ["max"]},
+        "num_sanity_val_steps": {"values": [0]},
     },
 }
 
@@ -278,6 +299,9 @@ sweep_frozen = {
         "seed": {"values": [0, 1, 2, 3, 4]},
         "delta": {"distribution": "uniform", "min": 0.5, "max": 1.0},
         "patience": {"values": [10]},
+        "monitor": {"values": ["val_auroc_EU"]},
+        "mode": {"values": ["max"]},
+        "num_sanity_val_steps": {"values": [0]},
     },
 }
 
@@ -293,5 +317,8 @@ sweep_cagcn = {
         "weight_decay": {"distribution": "uniform", "min": 1e-7, "max": 1e-1},
         "max_epochs": {"values": [200]},
         "patience": {"values": [10]},
+        "monitor": {"values": ["val_nll"]},
+        "mode": {"values": ["min"]},
+        "num_sanity_val_steps": {"values": [0]},
     },
 }

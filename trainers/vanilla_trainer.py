@@ -17,8 +17,11 @@ def vanilla_train(project_name, dataset_name, save_path):
     wandb.init(project=project_name)
 
     config = wandb.config
+    L.seed_everything(42, workers=True)
 
     wandb_logger = WandbLogger(project=project_name)
+    monitor = config.get("monitor", "val_f1")
+    mode = config.get("mode", "max")
 
     # Instantiate the model
     model = VanillaGNN(
@@ -35,21 +38,23 @@ def vanilla_train(project_name, dataset_name, save_path):
     trainer = L.Trainer(
         devices="auto",
         accelerator="auto",
+        deterministic=True,
+        num_sanity_val_steps=config.get("num_sanity_val_steps", 0),
         logger=wandb_logger,
         log_every_n_steps=1,
         callbacks=[
             EarlyStopping(
-                monitor="val_f1", 
+                monitor=monitor,
                 patience=config["patience"], 
-                mode="max"
+                mode=mode,
             ),
             ModelCheckpoint(
-                monitor="val_f1",
-                mode="max",
+                monitor=monitor,
+                mode=mode,
                 save_top_k=1,       
                 save_last=False,         
                 dirpath=save_path,         
-                filename=f'{wandb.run.id}_{dataset_name}_val_f1={{val_f1:.4f}}',
+                filename=f'{wandb.run.id}_{dataset_name}_{monitor}={{{monitor}:.4f}}',
                 auto_insert_metric_name=False # We already included the metric in filename
             ),
         ],

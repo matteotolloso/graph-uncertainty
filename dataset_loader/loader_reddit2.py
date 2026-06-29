@@ -210,6 +210,8 @@ def load_reddit2(DATASET_STORAGE_PATH, config):
     if config.get("batch_size", -1) <= 0:
         print("Using DataLoader for full-batch training.")
         train_loader = DataLoader([data], batch_size=1, shuffle=False)
+        val_loader = DataLoader([data], batch_size=1, shuffle=False)
+        test_loader = DataLoader([data], batch_size=1, shuffle=False)
     else:
         batch_size = int(config["batch_size"])
         num_layers = int(config.get("num_layers", 2))
@@ -225,7 +227,22 @@ def load_reddit2(DATASET_STORAGE_PATH, config):
             shuffle=True
         )
 
-    val_loader = DataLoader([data], batch_size=1, shuffle=False)
-    test_loader = DataLoader([data], batch_size=1, shuffle=False)
+        print(f"Using NeighborLoader for mini-batch validation with batch size {batch_size}.")
+        val_loader = NeighborLoader(
+            data,
+            input_nodes=data.val_mask,
+            batch_size=batch_size,
+            num_neighbors=neighbor_sizes,
+            shuffle=False
+        )
+
+        print(f"Using NeighborLoader for mini-batch testing with batch size {batch_size}.")
+        test_loader = NeighborLoader(
+            data,
+            input_nodes=data.test_mask,
+            batch_size=batch_size,
+            num_neighbors=neighbor_sizes,
+            shuffle=False
+        )
 
     return train_loader, val_loader, test_loader

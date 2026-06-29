@@ -18,6 +18,7 @@ def credal_LJ_train(project_name, dataset_name, **kwargs):
     wandb.init(project=project_name)
 
     config = wandb.config
+    L.seed_everything(42, workers=True)
 
     wandb_logger = WandbLogger(project=project_name)
 
@@ -37,10 +38,16 @@ def credal_LJ_train(project_name, dataset_name, **kwargs):
     trainer = L.Trainer(
         devices="auto",
         accelerator="auto",
+        deterministic=True,
+        num_sanity_val_steps=config.get("num_sanity_val_steps", 0),
         logger=wandb_logger,
         log_every_n_steps=1,
         callbacks=[
-            EarlyStopping(monitor="val_loss", patience=config["patience"]),
+            EarlyStopping(
+                monitor=config.get("monitor", "val_loss"),
+                patience=config["patience"],
+                mode=config.get("mode", "min"),
+            ),
         ],
     )
 

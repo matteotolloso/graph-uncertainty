@@ -111,3 +111,14 @@
 # CUDA_VISIBLE_DEVICES=-1 python main.py --dataset amazon_ratings --model energy  ;
 # CUDA_VISIBLE_DEVICES=-1 python main.py --dataset cora --model energy  ;
 # CUDA_VISIBLE_DEVICES=-1 python main.py --dataset roman_empire --model energy ;
+
+CUDA_VISIBLE_DEVICES=6 python main.py -m credal_LJ_dual_head_detached -d chameleon -c 300
+CUDA_VISIBLE_DEVICES=5 python main.py -m credal_LJ_dual_head_detached -d patents -c 300     RUNNING
+CUDA_VISIBLE_DEVICES=6 python main.py -m credal_LJ_dual_head_detached -d arxiv -c 300       RUNNING 
+CUDA_VISIBLE_DEVICES=6 python main.py -m credal_LJ_dual_head_detached -d reddit2 -c 300     OK
+CUDA_VISIBLE_DEVICES=6 python main.py -m credal_LJ_dual_head_detached -d coauthor -c 300        OK
+CUDA_VISIBLE_DEVICES=6 python main.py -m credal_LJ_dual_head_detached -d squirrel -c 300
+CUDA_VISIBLE_DEVICES=6 python main.py -m credal_LJ_dual_head_detached -d amazon_ratings -c 300  OK
+CUDA_VISIBLE_DEVICES=4 python main.py -m credal_LJ_dual_head_detached -d cora -c 300
+CUDA_VISIBLE_DEVICES=6 python main.py -m credal_LJ_dual_head_detached -d roman_empire -c 300      OK
+

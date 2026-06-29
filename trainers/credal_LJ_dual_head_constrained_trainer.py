@@ -17,6 +17,7 @@ from dataset_loader.dataset_loader import dataset_loader
 def credal_LJ_dual_head_constrained_train(project_name, dataset_name, **kwargs):
     wandb.init(project=project_name)
     config = wandb.config
+    L.seed_everything(42, workers=True)
     wandb_logger = WandbLogger(project=project_name)
 
     model = credal_GNN_LJ_DualHeadConstrained(
@@ -35,10 +36,16 @@ def credal_LJ_dual_head_constrained_train(project_name, dataset_name, **kwargs):
     trainer = L.Trainer(
         devices="auto",
         accelerator="auto",
+        deterministic=True,
+        num_sanity_val_steps=config.get("num_sanity_val_steps", 0),
         logger=wandb_logger,
         log_every_n_steps=1,
         callbacks=[
-            EarlyStopping(monitor="val_f1_cls", patience=config["patience"], mode="max"),
+            EarlyStopping(
+                monitor=config.get("monitor", "val_f1_cls"),
+                patience=config["patience"],
+                mode=config.get("mode", "max"),
+            ),
         ],
     )
 

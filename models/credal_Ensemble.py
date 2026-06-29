@@ -74,19 +74,19 @@ class credal_Ensemble(L.LightningModule):
         q_L, q_U, stacked_probs = self(batch)
 
         # Isolate the test nodes for all tensors
-        q_L_test = q_L[batch.test_mask].detach().cpu()
-        q_U_test = q_U[batch.test_mask].detach().cpu()
-        stacked_probs_test = stacked_probs[:, batch.test_mask, :].detach().cpu()
-        y_test = batch.y[batch.test_mask].detach().cpu()
+        q_L_test = q_L[batch.test_mask].detach()
+        q_U_test = q_U[batch.test_mask].detach()
+        stacked_probs_test = stacked_probs[:, batch.test_mask, :].detach()
+        y_test = batch.y[batch.test_mask].detach()
 
         # --- 1. Credal Uncertainty Calculation (Your original method) ---
-        TU, AU, EU = compute_uncertainties(q_L_test.numpy(), q_U_test.numpy()) 
+        TU, AU, EU = compute_uncertainties(q_L_test, q_U_test) 
         targets = 1 - y_test.sum(axis=1) # 1 for OOD, 0 for ID
         
         print("\n--- Credal Uncertainty (Min/Max Bounds) ---")
-        self.log("auroc_EU_credal", self.auroc_metric(torch.from_numpy(EU), targets))
-        self.log("auroc_AU_credal", self.auroc_metric(torch.from_numpy(AU), targets))
-        self.log("auroc_TU_credal", self.auroc_metric(torch.from_numpy(TU), targets))
+        self.log("auroc_EU_credal", self.auroc_metric(EU, targets))
+        self.log("auroc_AU_credal", self.auroc_metric(AU, targets))
+        self.log("auroc_TU_credal", self.auroc_metric(TU, targets))
 
         # --- 2. Classical Ensemble Uncertainty Calculation (New method) ---
         # p_tilde: Mean of predictions across the ensemble

@@ -53,6 +53,19 @@ class VanillaGNN(L.LightningModule):
 
         self.apply(self.weights_init)
 
+    def _split_mask(self, batch, split):
+        if hasattr(batch, "batch_size") and hasattr(batch, "n_id"):
+            mask = torch.zeros(batch.num_nodes, dtype=torch.bool, device=batch.x.device)
+            mask[:batch.batch_size] = True
+            return mask
+        return getattr(batch, f"{split}_mask")
+
+    def _f1_score(self, preds, labels):
+        return F1Score(task="multiclass", num_classes=self.C).to(preds.device)(preds, labels)
+
+    def _auroc_score(self, scores, targets):
+        return AUROC(task="binary").to(scores.device)(scores, targets)
+
     def forward(self, data):
         # The model should return raw logits
         logits = self.gnn_model(data.x, data.edge_index)
@@ -62,8 +75,9 @@ class VanillaGNN(L.LightningModule):
         logits = self(batch)
         
         # Apply train mask to get logits and labels for training nodes
-        logits_train = logits[batch.train_mask]
-        y_train = batch.y[batch.train_mask]
+        train_mask = self._split_mask(batch, "train")
+        logits_train = logits[train_mask]
+        y_train = batch.y[train_mask]
         
         # The loss function expects class indices, not one-hot vectors
         loss = self.criterion(logits_train, torch.argmax(y_train, dim=1))
@@ -72,63 +86,90 @@ class VanillaGNN(L.LightningModule):
         preds = torch.argmax(logits_train, dim=1)
         target = torch.argmax(y_train, dim=1)
         accuracy = self.accuracy_metric(preds, target)
-        f1 = self.f1_metric(preds, target)
+        f1 = self._f1_score(preds, target)
         
-        num_train_nodes = batch.train_mask.sum()
+        num_train_nodes = train_mask.sum()
         self.log("train_loss", loss, batch_size=num_train_nodes)
         self.log("train_acc", accuracy, batch_size=num_train_nodes)
         self.log("train_f1", f1, batch_size=num_train_nodes)
         return loss
 
+    def on_validation_epoch_start(self):
+        self._validation_outputs = []
+
     def validation_step(self, batch, batch_idx):
         logits = self(batch)
         
         # Get all predictions and labels for the validation set
-        logits_val = logits[batch.val_mask].detach()
-        y_val = batch.y[batch.val_mask].detach()
-
-        # OOD Detection using Maximum Softmax Probability (MSP)
-        if self.ood_in_val:
-            probs = F.softmax(logits_val, dim=1)
-            msp_scores, _ = torch.max(probs, dim=1)
-            ood_scores = -msp_scores # Lower confidence -> higher score
-            
-            ood_targets = 1 - y_val.sum(axis=1)
-            val_auroc = self.auroc_metric(ood_scores, ood_targets)
-            self.log("val_auroc", val_auroc, prog_bar=True)
+        val_mask = self._split_mask(batch, "val")
+        logits_val = logits[val_mask].detach()
+        y_val = batch.y[val_mask].detach()
 
         # Classification Metrics on ID nodes within the validation set
         id_mask_in_val = (y_val.sum(axis=1) == 1)
-        
-        id_logits = logits_val[id_mask_in_val]
-        id_labels = torch.argmax(y_val[id_mask_in_val], dim=1)
-        
-        loss = self.criterion(id_logits, id_labels)
-        self.log("val_loss", loss, prog_bar=True)
-        
-        id_preds = torch.argmax(id_logits, dim=1)
-        val_acc = self.accuracy_metric(id_preds, id_labels)
-        val_f1 = self.f1_metric(id_preds, id_labels)
-        
-        self.log("val_acc", val_acc)
-        self.log("val_f1", val_f1, prog_bar=True)
+
+        if id_mask_in_val.any():
+            id_logits = logits_val[id_mask_in_val]
+            id_labels = torch.argmax(y_val[id_mask_in_val], dim=1)
+
+            loss = self.criterion(id_logits, id_labels)
+            id_preds = torch.argmax(id_logits, dim=1)
+            val_acc = (id_preds == id_labels).float().mean()
+            self.log("val_loss", loss, prog_bar=True, batch_size=id_mask_in_val.sum(), on_step=False, on_epoch=True)
+            self.log("val_acc", val_acc, batch_size=id_mask_in_val.sum(), on_step=False, on_epoch=True)
+        else:
+            loss = None
+            id_labels = torch.empty(0, dtype=torch.long, device=self.device)
+            id_preds = torch.empty(0, dtype=torch.long, device=self.device)
+
+        output = {
+            "id_labels": id_labels.detach(),
+            "id_preds": id_preds.detach(),
+        }
+
+        if self.ood_in_val:
+            probs = F.softmax(logits_val, dim=1)
+            msp_scores, _ = torch.max(probs, dim=1)
+            output.update({
+                "ood_scores": (-msp_scores).detach(),
+                "ood_targets": (1 - y_val.sum(axis=1)).long().detach(),
+            })
+
+        self._validation_outputs.append(output)
         return loss
+
+    def on_validation_epoch_end(self):
+        if not self._validation_outputs:
+            return
+
+        id_labels = torch.cat([o["id_labels"] for o in self._validation_outputs], dim=0)
+        id_preds = torch.cat([o["id_preds"] for o in self._validation_outputs], dim=0)
+        if id_labels.numel() > 0:
+            self.log("val_f1", self._f1_score(id_preds, id_labels), prog_bar=True)
+
+        if self.ood_in_val and "ood_scores" in self._validation_outputs[0]:
+            ood_scores = torch.cat([o["ood_scores"] for o in self._validation_outputs], dim=0)
+            ood_targets = torch.cat([o["ood_targets"] for o in self._validation_outputs], dim=0)
+            self.log("val_auroc", self._auroc_score(ood_scores, ood_targets), prog_bar=True)
+
+        self._validation_outputs.clear()
+
+    def on_test_epoch_start(self):
+        self._test_outputs = []
     
     def test_step(self, batch, batch_idx):
         logits = self(batch)
 
-        logits_test = logits[batch.test_mask].detach()
-        y_test = batch.y[batch.test_mask].detach()
+        test_mask = self._split_mask(batch, "test")
+        logits_test = logits[test_mask].detach()
+        y_test = batch.y[test_mask].detach()
 
         # OOD Detection using MSP
         probs = F.softmax(logits_test, dim=1)
         msp_scores, _ = torch.max(probs, dim=1)
         ood_scores = -msp_scores
 
-        ood_targets = 1 - y_test.sum(axis=1)
-        test_auroc = self.auroc_metric(ood_scores, ood_targets)
-
-        self.log("test_auroc", test_auroc)
+        ood_targets = (1 - y_test.sum(axis=1)).long()
 
         # Classification Metrics on ID nodes
         id_mask_in_test = (y_test.sum(axis=1) == 1)
@@ -137,12 +178,30 @@ class VanillaGNN(L.LightningModule):
         id_labels = torch.argmax(y_test[id_mask_in_test], dim=1)
         
         id_preds = torch.argmax(id_logits, dim=1)
-        test_acc = self.accuracy_metric(id_preds, id_labels)
-        test_f1 = self.f1_metric(id_preds, id_labels)
-        
-        self.log("test_acc", test_acc)
-        self.log("test_f1", test_f1)
-        return test_auroc
+
+        self._test_outputs.append({
+            "ood_scores": ood_scores.detach(),
+            "ood_targets": ood_targets.detach(),
+            "id_labels": id_labels.detach(),
+            "id_preds": id_preds.detach(),
+        })
+        return ood_scores
+
+    def on_test_epoch_end(self):
+        if not self._test_outputs:
+            return
+
+        ood_scores = torch.cat([o["ood_scores"] for o in self._test_outputs], dim=0)
+        ood_targets = torch.cat([o["ood_targets"] for o in self._test_outputs], dim=0)
+        self.log("test_auroc", self._auroc_score(ood_scores, ood_targets))
+
+        id_labels = torch.cat([o["id_labels"] for o in self._test_outputs], dim=0)
+        id_preds = torch.cat([o["id_preds"] for o in self._test_outputs], dim=0)
+        if id_labels.numel() > 0:
+            self.log("test_acc", (id_preds == id_labels).float().mean())
+            self.log("test_f1", self._f1_score(id_preds, id_labels))
+
+        self._test_outputs.clear()
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(

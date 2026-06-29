@@ -75,6 +75,19 @@ class CredalFrozenJoint(L.LightningModule):
         self.f1_metric = F1Score(task="multiclass", num_classes=self.C)
         self.auroc_metric = AUROC(task="binary")
 
+    def _split_mask(self, batch, split):
+        if hasattr(batch, "batch_size") and hasattr(batch, "n_id"):
+            mask = torch.zeros(batch.num_nodes, dtype=torch.bool, device=batch.x.device)
+            mask[:batch.batch_size] = True
+            return mask
+        return getattr(batch, f"{split}_mask")
+
+    def _f1_score(self, preds, labels):
+        return F1Score(task="multiclass", num_classes=self.C).to(preds.device)(preds, labels)
+
+    def _auroc_score(self, scores, targets):
+        return AUROC(task="binary").to(scores.device)(scores, targets)
+
     # ---------------------------
     # Backbone helpers
     # ---------------------------
@@ -125,27 +138,28 @@ class CredalFrozenJoint(L.LightningModule):
         return q_L, q_U
 
     def training_step(self, batch, batch_idx):
-        if not hasattr(batch, "train_mask"):
+        if not hasattr(batch, "train_mask") and not (hasattr(batch, "batch_size") and hasattr(batch, "n_id")):
             raise ValueError("Training batch must include 'train_mask'.")
-        if not torch.any(batch.train_mask):
+        train_mask = self._split_mask(batch, "train")
+        if not torch.any(train_mask):
             raise ValueError("'train_mask' is empty or all False in training batch.")
 
         q_L, q_U = self(batch)
-        y_train = batch.y[batch.train_mask]
-        q_U_train = q_U[batch.train_mask]
-        q_L_train = q_L[batch.train_mask]
+        y_train = batch.y[train_mask]
+        q_U_train = q_U[train_mask]
+        q_L_train = q_L[train_mask]
 
         loss = self.criterion(q_L_train, q_U_train, y_train)
 
         preds_U = torch.argmax(q_U_train, dim=1)
         preds_L = torch.argmax(q_L_train, dim=1)
         labels  = torch.argmax(y_train, dim=1)
-        f1_U = self.f1_metric(preds_U, labels)
-        f1_L = self.f1_metric(preds_L, labels)
+        f1_U = self._f1_score(preds_U, labels)
+        f1_L = self._f1_score(preds_L, labels)
         acc_U = (preds_U == labels).float().mean()
         acc_L = (preds_L == labels).float().mean()
 
-        n = batch.train_mask.sum()
+        n = train_mask.sum()
         self.log("train_loss", loss, batch_size=n)
         self.log("train_acc_U", acc_U, batch_size=n)
         self.log("train_acc_L", acc_L, batch_size=n)
@@ -153,63 +167,130 @@ class CredalFrozenJoint(L.LightningModule):
         self.log("train_f1_L",  f1_L,  batch_size=n)
         return loss
 
+    def on_validation_epoch_start(self):
+        self._validation_outputs = []
+
     def validation_step(self, batch, batch_idx):
-        if not hasattr(batch, "val_mask"):
+        if not hasattr(batch, "val_mask") and not (hasattr(batch, "batch_size") and hasattr(batch, "n_id")):
             raise ValueError("Validation batch must include 'val_mask'.")
-        if not torch.any(batch.val_mask):
+        val_mask = self._split_mask(batch, "val")
+        if not torch.any(val_mask):
             raise ValueError("'val_mask' is empty or all False in validation batch.")
 
         q_L, q_U = self(batch)
-        q_L_val = q_L[batch.val_mask].detach()
-        q_U_val = q_U[batch.val_mask].detach()
-        y_val   = batch.y[batch.val_mask].detach()
-
-        if self.ood_in_val:
-            TU, AU, EU = compute_uncertainties(q_L_val.cpu().numpy(), q_U_val.cpu().numpy())
-            targets = 1 - y_val.sum(axis=1)  # 1 = OOD, 0 = ID
-            self.log("val_auroc_EU", self.auroc_metric(torch.from_numpy(EU).to(self.device), targets), prog_bar=True)
-            self.log("val_auroc_AU", self.auroc_metric(torch.from_numpy(AU).to(self.device), targets))
-            self.log("val_auroc_TU", self.auroc_metric(torch.from_numpy(TU).to(self.device), targets))
+        q_L_val = q_L[val_mask].detach()
+        q_U_val = q_U[val_mask].detach()
+        y_val   = batch.y[val_mask].detach()
 
         id_mask = (y_val.sum(axis=1) == 1)
-        loss = self.criterion(q_L_val[id_mask], q_U_val[id_mask], y_val[id_mask])
-        self.log("val_loss", loss, prog_bar=True)
+        if id_mask.any():
+            loss = self.criterion(q_L_val[id_mask], q_U_val[id_mask], y_val[id_mask])
+            self.log("val_loss", loss, prog_bar=True, batch_size=id_mask.sum(), on_step=False, on_epoch=True)
 
-        val_labels  = torch.argmax(y_val[id_mask], dim=1)
-        val_preds_U = torch.argmax(q_U_val[id_mask], dim=1)
-        val_preds_L = torch.argmax(q_L_val[id_mask], dim=1)
-        self.log("val_f1_U", self.f1_metric(val_preds_U, val_labels), prog_bar=True)
-        self.log("val_f1_L", self.f1_metric(val_preds_L, val_labels))
+            val_labels  = torch.argmax(y_val[id_mask], dim=1)
+            val_preds_U = torch.argmax(q_U_val[id_mask], dim=1)
+            val_preds_L = torch.argmax(q_L_val[id_mask], dim=1)
+        else:
+            loss = None
+            val_labels = torch.empty(0, dtype=torch.long, device=self.device)
+            val_preds_U = torch.empty(0, dtype=torch.long, device=self.device)
+            val_preds_L = torch.empty(0, dtype=torch.long, device=self.device)
+
+        output = {
+            "val_preds_U": val_preds_U.detach(),
+            "val_preds_L": val_preds_L.detach(),
+            "val_labels": val_labels.detach(),
+        }
+        if self.ood_in_val:
+            TU, AU, EU = compute_uncertainties(q_L_val, q_U_val)
+            output.update({
+                "TU": TU.detach(),
+                "AU": AU.detach(),
+                "EU": EU.detach(),
+                "targets": (1 - y_val.sum(axis=1)).long().detach(),
+            })
+        self._validation_outputs.append(output)
         return loss
 
+    def on_validation_epoch_end(self):
+        if not self._validation_outputs:
+            return
+
+        labels = torch.cat([o["val_labels"] for o in self._validation_outputs], dim=0)
+        preds_U = torch.cat([o["val_preds_U"] for o in self._validation_outputs], dim=0)
+        preds_L = torch.cat([o["val_preds_L"] for o in self._validation_outputs], dim=0)
+        if labels.numel() > 0:
+            self.log("val_f1_U", self._f1_score(preds_U, labels), prog_bar=True)
+            self.log("val_f1_L", self._f1_score(preds_L, labels))
+
+        if self.ood_in_val and "EU" in self._validation_outputs[0]:
+            targets = torch.cat([o["targets"] for o in self._validation_outputs], dim=0)
+            EU = torch.cat([o["EU"] for o in self._validation_outputs], dim=0)
+            AU = torch.cat([o["AU"] for o in self._validation_outputs], dim=0)
+            TU = torch.cat([o["TU"] for o in self._validation_outputs], dim=0)
+            self.log("val_auroc_EU", self._auroc_score(EU, targets), prog_bar=True)
+            self.log("val_auroc_AU", self._auroc_score(AU, targets))
+            self.log("val_auroc_TU", self._auroc_score(TU, targets))
+
+        self._validation_outputs.clear()
+
+    def on_test_epoch_start(self):
+        self._test_outputs = []
+
     def test_step(self, batch, batch_idx):
-        if not hasattr(batch, "test_mask"):
+        if not hasattr(batch, "test_mask") and not (hasattr(batch, "batch_size") and hasattr(batch, "n_id")):
             raise ValueError("Test batch must include 'test_mask'.")
-        if not torch.any(batch.test_mask):
+        test_mask = self._split_mask(batch, "test")
+        if not torch.any(test_mask):
             raise ValueError("'test_mask' is empty or all False in test batch.")
 
         q_L, q_U = self(batch)
-        q_L_test = q_L[batch.test_mask].detach().cpu()
-        q_U_test = q_U[batch.test_mask].detach().cpu()
-        y_test   = batch.y[batch.test_mask].detach().cpu()
+        q_L_test = q_L[test_mask].detach()
+        q_U_test = q_U[test_mask].detach()
+        y_test   = batch.y[test_mask].detach()
 
-        TU, AU, EU = compute_uncertainties(q_L_test.numpy(), q_U_test.numpy())
-        targets = 1 - y_test.sum(axis=1)
-
-        self.log("test_auroc_EU", self.auroc_metric(torch.from_numpy(EU), targets))
-        self.log("test_auroc_AU", self.auroc_metric(torch.from_numpy(AU), targets))
-        self.log("test_auroc_TU", self.auroc_metric(torch.from_numpy(TU), targets))
+        TU, AU, EU = compute_uncertainties(q_L_test, q_U_test)
+        targets = (1 - y_test.sum(axis=1)).long()
 
         id_mask = (y_test.sum(axis=1) == 1)
         id_labels  = torch.argmax(y_test[id_mask], dim=1)
         id_preds_U = torch.argmax(q_U_test[id_mask], dim=1)
         id_preds_L = torch.argmax(q_L_test[id_mask], dim=1)
-        self.log("test_accuracy_U", (id_preds_U == id_labels).float().mean())
-        self.log("test_accuracy_L", (id_preds_L == id_labels).float().mean())
-        self.log("test_f1_U", self.f1_metric(id_preds_U, id_labels))
-        self.log("test_f1_L", self.f1_metric(id_preds_L, id_labels))
 
-        return self.auroc_metric(torch.from_numpy(EU), targets)
+        self._test_outputs.append({
+            "TU": TU.detach(),
+            "AU": AU.detach(),
+            "EU": EU.detach(),
+            "targets": targets.detach(),
+            "id_labels": id_labels.detach(),
+            "id_preds_U": id_preds_U.detach(),
+            "id_preds_L": id_preds_L.detach(),
+        })
+
+        return EU
+
+    def on_test_epoch_end(self):
+        if not self._test_outputs:
+            return
+
+        targets = torch.cat([o["targets"] for o in self._test_outputs], dim=0)
+        EU = torch.cat([o["EU"] for o in self._test_outputs], dim=0)
+        AU = torch.cat([o["AU"] for o in self._test_outputs], dim=0)
+        TU = torch.cat([o["TU"] for o in self._test_outputs], dim=0)
+        self.log("test_auroc_EU", self._auroc_score(EU, targets))
+        self.log("test_auroc_AU", self._auroc_score(AU, targets))
+        self.log("test_auroc_TU", self._auroc_score(TU, targets))
+
+        id_labels = torch.cat([o["id_labels"] for o in self._test_outputs], dim=0)
+        id_preds_U = torch.cat([o["id_preds_U"] for o in self._test_outputs], dim=0)
+        id_preds_L = torch.cat([o["id_preds_L"] for o in self._test_outputs], dim=0)
+        if id_labels.numel() > 0:
+            self.log("test_accuracy_U", (id_preds_U == id_labels).float().mean())
+            self.log("test_accuracy_L", (id_preds_L == id_labels).float().mean())
+            self.log("test_f1_U", self._f1_score(id_preds_U, id_labels))
+            self.log("test_f1_L", self._f1_score(id_preds_L, id_labels))
+
+        self._test_outputs.clear()
 
     # ---------------------------
     # Optimizer: only Credal layer params
