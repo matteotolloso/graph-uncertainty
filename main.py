@@ -51,6 +51,7 @@ parser.add_argument(
         "gebm",
         "frozen",
         "cagcn",
+        "graph_esn",
     ],
     default="vanilla",
     help="Model to run the sweep on.",
@@ -135,6 +136,8 @@ elif args.model == "frozen":
     train_func = trainers.credal_frozen_joint_train
 elif args.model == "cagcn":
     train_func = trainers.cagcn_train
+elif args.model == "graph_esn":
+    train_func = trainers.graph_esn_train
 else:
     raise ValueError(f"Unsupported model: {args.model}")
 

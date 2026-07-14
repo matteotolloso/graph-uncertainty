@@ -8,3 +8,4 @@ faiss-gpu
 torch_geometric
 torch_sparse
 torch_scatter
+graphesn

@@ -18,6 +18,7 @@ from .gnn_safe_tester import gnnsafe_test
 # from .gebm_tester import gebm_test
 from .credal_frozen_trainer import credal_frozen_joint_train
 from .cagcn_trainer import cagcn_train
+from .graph_esn_trainer import graph_esn_train
 
 
 

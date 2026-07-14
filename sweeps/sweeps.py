@@ -37,7 +37,7 @@ metadata_arxiv     = {
 metadata_reddit2   = {
     "in_channels": {"values": [602]},  
     "out_channels": {"values": [30]},
-    "batch_size": {"values": [2**14]},
+    "batch_size": {"values": [2**10]},
     "num_neighbors": {"values": [8]},
 }
 metadata_coauthor  = {
@@ -154,7 +154,7 @@ sweep_credal_LJ_dual_head = {
 sweep_credal_LJ_dual_head_detached = {
     "method": "bayes",
     "metric": {
-        "name": "val_auroc_TU",
+        "name": "val_auroc_EU",
         "goal": "maximize"
     },
     "parameters": {
@@ -165,7 +165,7 @@ sweep_credal_LJ_dual_head_detached = {
         "lambda_cls": {"distribution": "uniform", "min": 0.1, "max": 2.0},
         "gnn_type": {"values": ["GCN", "SAGE"]},
         "patience": {"values": [20]},
-        "monitor": {"values": ["val_auroc_TU"]},
+        "monitor": {"values": ["val_auroc_EU"]},
         "mode": {"values": ["max"]},
         "num_sanity_val_steps": {"values": [0]},
     },
@@ -320,5 +320,24 @@ sweep_cagcn = {
         "monitor": {"values": ["val_nll"]},
         "mode": {"values": ["min"]},
         "num_sanity_val_steps": {"values": [0]},
+    },
+}
+
+sweep_graph_esn = {
+    "method": "bayes",
+    "metric": {"name": "val_auroc_TU_credal", "goal": "maximize"},
+    "parameters": {
+        "hidden_channels": {"distribution": "int_uniform", "min": 64, "max": 256},
+        "num_layers": {"distribution": "int_uniform", "min": 1, "max": 3},
+        "spectral_radius": {"distribution": "uniform", "min": 0.5, "max": 0.9},
+        "input_scaling": {"distribution": "log_uniform_values", "min": 1e-3, "max": 1.0},
+        "leakage": {"distribution": "uniform", "min": 0.3, "max": 1.0},
+        "num_reservoirs": {"distribution": "int_uniform", "min": 10, "max": 100},
+        "readout_regularization": {"distribution": "log_uniform_values", "min": 1e-5, "max": 1e2},
+        "bias": {"values": [False, True]},
+        "pooling": {"values": ["none"]},
+        "fully": {"values": [False, True]},
+        "max_iterations": {"distribution": "int_uniform", "min": 50, "max": 150},
+        "epsilon": {"distribution": "log_uniform_values", "min": 1e-7, "max": 1e-4},
     },
 }
