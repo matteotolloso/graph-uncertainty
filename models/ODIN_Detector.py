@@ -1,7 +1,7 @@
 import torch
 import lightning as L
 import torch.nn.functional as F
-from torchmetrics import AUROC, Accuracy, F1Score
+from torchmetrics import AUROC
 from models.VanillaGNN import VanillaGNN
 
 class ODINDetector(L.LightningModule):
@@ -18,36 +18,32 @@ class ODINDetector(L.LightningModule):
         self.temperature = temperature
         self.noise_magnitude = noise_magnitude
 
-        # Metrics
-        self.auroc = AUROC(task="binary")
-
         # Save hyperparameters (wandb sweep will control these)
         self.save_hyperparameters(ignore=['backbone'])
 
-    def forward(self, data): # TODO check
+    def forward(self, data):
         # Clone input and enable gradients on x
         x_perturbed = data.x.clone().detach().requires_grad_(True)
         data_perturbed = data.clone()
         data_perturbed.x = x_perturbed
 
-        # Get logits from the backbone
-        logits = self.backbone(data_perturbed)  # shape: [num_nodes, C]
+        with torch.enable_grad():
+            # Get logits from the backbone. Lightning validation/test normally
+            # runs under no_grad, but ODIN needs this input gradient.
+            logits = self.backbone(data_perturbed)  # shape: [num_nodes, C]
 
-        # Apply temperature scaling
-        logits_temp = logits / self.temperature
-        probs = F.softmax(logits_temp, dim=1)
+            # Apply temperature scaling
+            logits_temp = logits / self.temperature
+            probs = F.softmax(logits_temp, dim=1)
 
-        # Get max probability (for loss-like target)
-        max_score, _ = torch.max(probs, dim=1) 
+            # Get max probability (for loss-like target)
+            max_score, _ = torch.max(probs, dim=1)
 
-        # Create fake "loss" to backprop the max confidence
-        # We want to perturb x in the direction that increases softmax confidence
-        # So we sum over the max score to simulate maximizing it
-        score_sum = torch.sum(max_score)
-        score_sum.backward()
+            # Differentiate confidence w.r.t. the input features only.
+            score_sum = torch.sum(max_score)
+            gradient = torch.autograd.grad(score_sum, x_perturbed, only_inputs=True)[0]
 
         # Compute the perturbation: sign of gradient * noise magnitude
-        gradient = x_perturbed.grad.data
         perturbation = self.noise_magnitude * gradient.sign()
 
         # Add perturbation to x
@@ -55,9 +51,10 @@ class ODINDetector(L.LightningModule):
         data_perturbed.x = x_final.detach()  # no gradient needed now
 
         # Final forward with perturbed x
-        final_logits = self.backbone(data_perturbed)
-        final_logits_temp = final_logits / self.temperature
-        final_probs = F.softmax(final_logits_temp, dim=1)
+        with torch.no_grad():
+            final_logits = self.backbone(data_perturbed)
+            final_logits_temp = final_logits / self.temperature
+            final_probs = F.softmax(final_logits_temp, dim=1)
 
         # Return max softmax scores as OOD confidence
         ood_scores = torch.max(final_probs, dim=1).values  # higher = more in-distribution

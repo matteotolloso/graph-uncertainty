@@ -6,7 +6,7 @@ from torchmetrics import AUROC
 from models.VanillaGNN import VanillaGNN # Assuming your VanillaGG is here
 
 class EnergyDetector(L.LightningModule):
-    def __init__(self, backbone_ckpt_path: str):
+    def __init__(self, backbone_ckpt_path: str, temperature: float = 1.0):
         super().__init__()
         self.save_hyperparameters()
 
@@ -15,6 +15,8 @@ class EnergyDetector(L.LightningModule):
         self.backbone.eval()
         for param in self.backbone.parameters():
             param.requires_grad = False
+
+        self.temperature = float(temperature)
         
     def _split_mask(self, batch, split):
         if hasattr(batch, "batch_size") and hasattr(batch, "n_id"):
@@ -36,9 +38,9 @@ class EnergyDetector(L.LightningModule):
             # The energy score is based on the pre-softmax logits
             logits = self.backbone(data)
 
-        # Energy score E(x) = -log(sum_c(exp(logit_c(x))))
+        # Energy score E_T(x) = -T * log(sum_c(exp(logit_c(x) / T)))
         # A higher energy score means more likely to be OOD.
-        energy_scores = -torch.logsumexp(logits, dim=1)
+        energy_scores = -self.temperature * torch.logsumexp(logits / self.temperature, dim=1)
 
         # Higher energy means more OOD; AUROC targets use 1 = OOD.
         ood_scores = energy_scores

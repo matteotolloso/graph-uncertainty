@@ -23,14 +23,16 @@ def energy_test(project_name, dataset_name, save_path, **kwargs):
 
     # --- 1. Find the Best Backbone Checkpoint ---
     vanilla_model_dir = os.path.join(save_path, f"vanilla_{dataset_name}")
-    backbone_ckpt_path = find_best_checkpoints(dataset_name, num_models=1)[0]
+    seed_idx = int(config.get("seed", 0))
+    backbone_ckpt_path = find_best_checkpoints(dataset_name, num_models=seed_idx + 1)[seed_idx]
     if not backbone_ckpt_path:
         raise FileNotFoundError(f"No backbone checkpoint found in {vanilla_model_dir}")
     print(f"Using backbone checkpoint: {backbone_ckpt_path}")
 
     # --- 2. Instantiate the Energy Detector ---
     energy_model = EnergyDetector(
-        backbone_ckpt_path=backbone_ckpt_path
+        backbone_ckpt_path=backbone_ckpt_path,
+        temperature=config.get("temperature", 1.0),
     )
 
     # --- 3. Set up Trainer ---

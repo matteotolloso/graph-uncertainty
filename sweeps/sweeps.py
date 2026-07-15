@@ -252,7 +252,8 @@ sweep_energy = {
         "goal": "maximize"
     },
     "parameters": {
-        "dummy_run_id": {"values": [1]} # A dummy parameter to ensure the agent runs exactly once.
+        "seed": {"values": [0, 1, 2, 3, 4]},
+        "temperature": {"values": [1.0, 10.0, 100.0, 1000.0]},
     },
 }
 

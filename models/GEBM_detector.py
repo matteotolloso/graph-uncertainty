@@ -20,7 +20,7 @@ except Exception:
 
 from models.VanillaGNN import VanillaGNN
 
-from graph_ebm.graph_uq.gebm import GraphEBMWrapper
+from graph_uq.gebm import GraphEBMWrapper
 
 class GEBMModule(L.LightningModule):
     """Post-hoc GEBM evaluator using joint embeddings and explicit train/test masks."""
