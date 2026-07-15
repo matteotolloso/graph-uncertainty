@@ -33,12 +33,14 @@ class GEBMModule(L.LightningModule):
         self.gebm = GraphEBMWrapper()
         self.C = self.backbone.C
 
-        self.auroc_metric = AUROC(task="binary")
         self.acc_metric = Accuracy(task="multiclass", num_classes=self.C)
         self.f1_metric  = F1Score(task="multiclass", num_classes=self.C)
 
         self._fitted = False
         self._edge_index_cpu = None
+
+    def _auroc_score(self, scores, targets):
+        return AUROC(task="binary").to(scores.device)(scores, targets)
 
     # ---------------------------
     # Backbone utilities
@@ -96,22 +98,22 @@ class GEBMModule(L.LightningModule):
         self._fitted = True
         self._edge_index_cpu = train_batch.edge_index.detach().cpu()
 
-    # ---------------------------
-    # Test GEBM
-    # ---------------------------
-    @torch.no_grad()
-    def test_step(self, batch, batch_idx):
-        """Evaluate GEBM uncertainty on test nodes (requires test_mask)."""
+    def _split_mask(self, batch, split):
+        if hasattr(batch, "batch_size") and hasattr(batch, "n_id"):
+            mask = torch.zeros(batch.num_nodes, dtype=torch.bool, device=batch.x.device)
+            mask[:batch.batch_size] = True
+            return mask
+        return getattr(batch, f"{split}_mask")
+
+    def _eval_step(self, batch, split: str):
         if not self._fitted:
-            raise RuntimeError("Call fit_gebm(train_batch) before testing.")
-        if not hasattr(batch, "test_mask"):
-            raise ValueError("Test batch must include a 'test_mask'.")
-        if not torch.any(batch.test_mask):
-            raise ValueError("'test_mask' is empty or all False in test batch.")
+            raise RuntimeError("Call fit_gebm(train_batch) before evaluation.")
+        mask_name = f"{split}_mask"
+        if not hasattr(batch, mask_name) and not (hasattr(batch, "batch_size") and hasattr(batch, "n_id")):
+            raise ValueError(f"Evaluation batch must include a '{mask_name}' or NeighborLoader seed nodes.")
 
         device = batch.x.device
 
-        # Base model forward without edges
         data_no_edges = batch.clone()
         data_no_edges.edge_index = torch.empty((2, 0), dtype=batch.edge_index.dtype, device=device)
         logits_no_edges = self._compute_logits(data_no_edges)
@@ -123,17 +125,32 @@ class GEBMModule(L.LightningModule):
             edge_index=self._edge_index_cpu,
         )
 
-        # select test nodes
-        test_mask_cpu = batch.test_mask.detach().cpu()
+        split_mask_cpu = self._split_mask(batch, split).detach().cpu()
         y_all_cpu = batch.y.detach().cpu()
-        y_test = y_all_cpu[test_mask_cpu]
-        uq_test = uq_all[test_mask_cpu]
-        ood_targets = 1 - y_test.sum(dim=1)
+        y_eval = y_all_cpu[split_mask_cpu]
+        uq_eval = uq_all[split_mask_cpu]
+        ood_targets = 1 - y_eval.sum(dim=1)
 
-        auroc_gebm = self.auroc_metric(uq_test, ood_targets)
-        self.log("test_auroc", auroc_gebm, prog_bar=True)
+        auroc_gebm = self._auroc_score(uq_eval, ood_targets)
+        self.log(f"{split}_auroc", auroc_gebm, prog_bar=True)
+
+        return auroc_gebm
+
+    # ---------------------------
+    # Eval GEBM
+    # ---------------------------
+    @torch.no_grad()
+    def validation_step(self, batch, batch_idx):
+        return self._eval_step(batch, "val")
+
+    @torch.no_grad()
+    def test_step(self, batch, batch_idx):
+        """Evaluate GEBM uncertainty on test nodes (requires test_mask)."""
+        auroc_gebm = self._eval_step(batch, "test")
 
         # optional classification metrics
+        test_mask_cpu = self._split_mask(batch, "test").detach().cpu()
+        y_test = batch.y.detach().cpu()[test_mask_cpu]
         id_mask = (y_test.sum(dim=1) == 1)
         if id_mask.any():
             logits_with_edges = self._compute_logits(batch).detach().cpu()
@@ -148,5 +165,4 @@ class GEBMModule(L.LightningModule):
 
     # No training/val phases
     def training_step(self, *args, **kwargs): pass
-    def validation_step(self, *args, **kwargs): pass
     def configure_optimizers(self): return None

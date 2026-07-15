@@ -38,9 +38,15 @@ class GNNSafeDetector(L.LightningModule):
         self.K = K
         self.alpha = alpha
 
-        # Metrics
-        self.val_auroc = AUROC(task="binary")
-        self.test_auroc = AUROC(task="binary")
+    def _split_mask(self, batch, split):
+        if hasattr(batch, "batch_size") and hasattr(batch, "n_id"):
+            mask = torch.zeros(batch.num_nodes, dtype=torch.bool, device=batch.x.device)
+            mask[:batch.batch_size] = True
+            return mask
+        return getattr(batch, f"{split}_mask")
+
+    def _auroc_score(self, scores, targets):
+        return AUROC(task="binary").to(scores.device)(scores, targets)
 
     def _propagate(self, energy_scores: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:
         """
@@ -113,42 +119,28 @@ class GNNSafeDetector(L.LightningModule):
           - ID nodes:  y.sum(dim=1) == 1 -> label 0
         """
         ood_scores_all = self(batch)  # [N]
-        val_mask = batch.val_mask
+        val_mask = self._split_mask(batch, "val")
 
         ood_scores_val = ood_scores_all[val_mask]
         y_val = batch.y[val_mask]
 
         targets = (y_val.sum(dim=1) == 0).long()  # 1 = OOD, 0 = ID
 
-        self.val_auroc.update(ood_scores_val, targets)
-        self.log(
-            "val_auroc",
-            self.val_auroc,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-        )
+        self.log("val_auroc", self._auroc_score(ood_scores_val, targets), prog_bar=True)
 
     def test_step(self, batch, batch_idx):
         """
         OOD detection AUROC on test nodes.
         """
         ood_scores_all = self(batch)  # [N]
-        test_mask = batch.test_mask
+        test_mask = self._split_mask(batch, "test")
 
         ood_scores_test = ood_scores_all[test_mask]
         y_test = batch.y[test_mask]
 
         targets = (y_test.sum(dim=1) == 0).long()  # 1 = OOD, 0 = ID
 
-        self.test_auroc.update(ood_scores_test, targets)
-        self.log(
-            "test_auroc",
-            self.test_auroc,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-        )
+        self.log("test_auroc", self._auroc_score(ood_scores_test, targets), prog_bar=True)
 
     def configure_optimizers(self):
         # No training; purely post-hoc detector

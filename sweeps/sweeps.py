@@ -62,7 +62,7 @@ metadata_roman_empire = {
 
 sweep_vanilla = {
     "method": "bayes",
-    "metric": {"name": "val_f1", "goal": "maximize"},
+    "metric": {"name": "val_auroc", "goal": "maximize"},
     "parameters": {
         "lr": {"distribution": "uniform", "min": 1e-5, "max": 1e-1},
         "hidden_channels": {"values": [64, 128]},
@@ -70,7 +70,7 @@ sweep_vanilla = {
         "weight_decay": {"distribution": "uniform", "min": 1e-7, "max": 1e-1},
         "gnn_type": {"values": ["GCN", "SAGE"]},
         "patience": {"values": [30]},
-        "monitor": {"values": ["val_f1"]},
+        "monitor": {"values": ["val_auroc"]},
         "mode": {"values": ["max"]},
         "num_sanity_val_steps": {"values": [0]},
     }
@@ -79,7 +79,7 @@ sweep_vanilla = {
 sweep_ensemble = {
     "method": "grid", 
     "metric": {
-        "name": "test_auroc_EU", 
+        "name": "val_auroc_EU_credal", 
         "goal": "maximize"
     },
     "parameters": {
@@ -133,7 +133,7 @@ sweep_credal_LJ = {
 sweep_credal_LJ_dual_head = {
     "method": "bayes",
     "metric": {
-        "name": "val_f1_cls",
+        "name": "val_auroc_EU",
         "goal": "maximize"
     },
     "parameters": {
@@ -144,7 +144,7 @@ sweep_credal_LJ_dual_head = {
         "lambda_cls": {"distribution": "uniform", "min": 0.1, "max": 2.0},
         "gnn_type": {"values": ["GCN", "SAGE"]},
         "patience": {"values": [20]},
-        "monitor": {"values": ["val_auroc_TU"]},
+        "monitor": {"values": ["val_auroc_EU"]},
         "mode": {"values": ["max"]},
         "num_sanity_val_steps": {"values": [0]},
     },
@@ -175,7 +175,7 @@ sweep_credal_LJ_dual_head_detached = {
 sweep_credal_LJ_dual_head_constrained = {
     "method": "bayes",
     "metric": {
-        "name": "val_f1_cls",
+        "name": "val_auroc_EU",
         "goal": "maximize"
     },
     "parameters": {
@@ -188,7 +188,7 @@ sweep_credal_LJ_dual_head_constrained = {
         "lambda_cons": {"values": [0.01, 0.05, 0.1, 0.25]},
         "gnn_type": {"values": ["GCN", "SAGE"]},
         "patience": {"values": [10]},
-        "monitor": {"values": ["val_f1_cls"]},
+        "monitor": {"values": ["val_auroc_EU"]},
         "mode": {"values": ["max"]},
         "num_sanity_val_steps": {"values": [0]},
     },
@@ -198,7 +198,7 @@ sweep_credal_LJ_dual_head_constrained = {
 sweep_credal_LJ_dual_head_constrained_detached = {
     "method": "bayes",
     "metric": {
-        "name": "val_f1_cls",
+        "name": "val_auroc_EU",
         "goal": "maximize"
     },
     "parameters": {
@@ -210,7 +210,7 @@ sweep_credal_LJ_dual_head_constrained_detached = {
         "lambda_cons": {"values": [0.01, 0.05, 0.1, 0.25]},
         "gnn_type": {"values": ["GCN", "SAGE"]},
         "patience": {"values": [20]},
-        "monitor": {"values": ["val_f1_cls"]},
+        "monitor": {"values": ["val_auroc_EU"]},
         "mode": {"values": ["max"]},
         "num_sanity_val_steps": {"values": [0]},
     },
@@ -256,6 +256,18 @@ sweep_energy = {
     },
 }
 
+sweep_odin = {
+    "method": "grid",
+    "metric": {
+        "name": "val_auroc",
+        "goal": "maximize",
+    },
+    "parameters": {
+        "temperature": {"values": [1.0, 10.0, 100.0, 1000.0]},
+        "noise_magnitude": {"values": [0.0, 0.001, 0.005, 0.01, 0.05]},
+    },
+}
+
 sweep_knn_LJ = {
     "method": "grid",
     "metric": {
@@ -283,7 +295,7 @@ sweep_gnnsafe = {
 
 sweep_gebm = {
     "method": "grid",
-    "metric": {"name": "auroc_GEBM", "goal": "maximize"},
+    "metric": {"name": "val_auroc", "goal": "maximize"},
     "parameters": {
         # keep consistent with your other sweeps
         "seed": {"values": [0, 1, 2, 3, 4]},
@@ -317,8 +329,8 @@ sweep_cagcn = {
         "weight_decay": {"distribution": "uniform", "min": 1e-7, "max": 1e-1},
         "max_epochs": {"values": [200]},
         "patience": {"values": [10]},
-        "monitor": {"values": ["val_nll"]},
-        "mode": {"values": ["min"]},
+        "monitor": {"values": ["val_auroc"]},
+        "mode": {"values": ["max"]},
         "num_sanity_val_steps": {"values": [0]},
     },
 }

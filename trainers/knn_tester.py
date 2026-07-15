@@ -10,6 +10,10 @@ from models.knn_detector import KNNDetector
 from dataset_loader.dataset_loader import dataset_loader
 from utils.model_manager import find_best_checkpoints
 
+
+def _base_graph(loader):
+    return getattr(loader, "data", None) or loader.dataset[0]
+
 def knn_test(project_name, dataset_name, save_path, **kwargs):
     wandb.init(project=project_name, job_type="test_knn")
     config = wandb.config
@@ -34,7 +38,7 @@ def knn_test(project_name, dataset_name, save_path, **kwargs):
     )
 
     # Precompute FAISS index from training graph
-    train_data = train_loader.dataset[0]
+    train_data = _base_graph(train_loader)
     model.precompute_statistics(train_data)
 
     logger = WandbLogger(project=project_name)

@@ -36,12 +36,12 @@ def odin_test(project_name, dataset_name, save_path, **kwargs):
         accelerator="auto",
         logger=wandb_logger,
         log_every_n_steps=1,
+        inference_mode=False,
         callbacks=[]
     )
 
-    trainer.fit(odin_model, OOD_val_loader)
+    trainer.validate(odin_model, OOD_val_loader)
 
-    # Run only test
     trainer.test(odin_model, OOD_test_loader)
 
     wandb.finish()

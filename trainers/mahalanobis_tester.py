@@ -15,6 +15,10 @@ from dataset_loader.dataset_loader import dataset_loader
 from utils.model_manager import find_best_checkpoints
 
 
+def _base_graph(loader):
+    return getattr(loader, "data", None) or loader.dataset[0]
+
+
 def mahalanobis_test(project_name, dataset_name, save_path, **kwargs):
     """
     Post-hoc Mahalanobis OOD detector (Lee et al. 2018) on top of a frozen VanillaGNN.
@@ -64,7 +68,7 @@ def mahalanobis_test(project_name, dataset_name, save_path, **kwargs):
     # --- 5. Pre-compute Statistics on Training Data ---
     print(f"\n--- Pre-computing Mahalanobis statistics on {dataset_name} training data ---")
     # We assume the dataset is an InMemoryDataset with a single Data object
-    train_data = train_loader.dataset[0]
+    train_data = _base_graph(train_loader)
     mahalanobis_model.precompute_statistics(train_data)
     print("Mahalanobis statistics pre-computation done.\n")
 

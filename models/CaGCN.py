@@ -50,12 +50,18 @@ class CaGCNModule(L.LightningModule):
         )
 
         # metrics
-        self.auroc_metric = AUROC(task="binary")
         self.acc_metric   = Accuracy(task="multiclass", num_classes=self.C)
         self.f1_metric    = F1Score(task="multiclass", num_classes=self.C)
 
         self.lr = lr
         self.weight_decay = weight_decay
+
+    def _split_mask(self, batch, split):
+        if hasattr(batch, "batch_size") and hasattr(batch, "n_id"):
+            mask = torch.zeros(batch.num_nodes, dtype=torch.bool, device=batch.x.device)
+            mask[:batch.batch_size] = True
+            return mask
+        return getattr(batch, f"{split}_mask")
 
     # ---------------- core ops ----------------
     @torch.no_grad()
@@ -86,7 +92,7 @@ class CaGCNModule(L.LightningModule):
         msp, _ = torch.max(probs, dim=1)
         ood_scores = -msp
         ood_targets = 1 - y_m.sum(dim=1)  # 1 = OOD, 0 = ID
-        return self.auroc_metric(ood_scores, ood_targets)
+        return AUROC(task="binary").to(ood_scores.device)(ood_scores, ood_targets)
 
     # ---------------- Lightning ----------------
     def forward(self, data):
@@ -94,48 +100,51 @@ class CaGCNModule(L.LightningModule):
 
     def training_step(self, batch, batch_idx):
         # final scaling stage trains on validation nodes (as in the repo when sign=False)
-        if not hasattr(batch, "val_mask"):
+        if not hasattr(batch, "val_mask") and not (hasattr(batch, "batch_size") and hasattr(batch, "n_id")):
             raise ValueError("CaGCN requires 'val_mask' in the batch for calibration training.")
-        if not torch.any(batch.val_mask):
+        val_mask = self._split_mask(batch, "val")
+        if not torch.any(val_mask):
             raise ValueError("'val_mask' is empty or all False.")
 
         logits_cal = self(batch)                # calibrated logits
-        val_mask = batch.val_mask
         y_val = batch.y[val_mask]
         logits_val = logits_cal[val_mask]
-        labels_val = self._onehot_to_indices(y_val)
+        id_mask = y_val.sum(dim=1) == 1
+        if not id_mask.any():
+            loss = logits_val.sum() * 0.0
+            self.log("train_loss", loss, prog_bar=True)
+            self.log("val_nll", loss)
+            return loss
+        labels_val = self._onehot_to_indices(y_val[id_mask])
 
-        loss = F.cross_entropy(logits_val, labels_val)
-
-        # optional logging: OOD AUROC on val
-        if self.ood_in_val:
-            val_auroc = self._ood_auroc_from_logits_and_mask(logits_cal, batch.y, val_mask)
-            self.log("val_auroc", val_auroc, prog_bar=True)
+        loss = F.cross_entropy(logits_val[id_mask], labels_val)
 
         self.log("train_loss", loss, prog_bar=True)
         self.log("val_nll", loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        if not hasattr(batch, "val_mask") or not torch.any(batch.val_mask):
+        if not hasattr(batch, "val_mask") and not (hasattr(batch, "batch_size") and hasattr(batch, "n_id")):
             raise ValueError("Validation requires a non-empty 'val_mask'.")
         logits_cal = self(batch)
-        val_auroc = self._ood_auroc_from_logits_and_mask(logits_cal, batch.y, batch.val_mask)
-        self.log("val_auroc_loop", val_auroc, prog_bar=True)
+        val_mask = self._split_mask(batch, "val")
+        val_auroc = self._ood_auroc_from_logits_and_mask(logits_cal, batch.y, val_mask)
+        self.log("val_auroc", val_auroc, prog_bar=True)
         return val_auroc
 
     def test_step(self, batch, batch_idx):
-        if not hasattr(batch, "test_mask") or not torch.any(batch.test_mask):
+        if not hasattr(batch, "test_mask") and not (hasattr(batch, "batch_size") and hasattr(batch, "n_id")):
             raise ValueError("Test requires a non-empty 'test_mask'.")
         logits_cal = self(batch)
+        test_mask = self._split_mask(batch, "test")
 
         # OOD AUROC (MSP)
-        test_auroc = self._ood_auroc_from_logits_and_mask(logits_cal, batch.y, batch.test_mask)
+        test_auroc = self._ood_auroc_from_logits_and_mask(logits_cal, batch.y, test_mask)
         self.log("test_auroc", test_auroc, prog_bar=True)
 
         # ID metrics
-        logits_test = logits_cal[batch.test_mask]
-        y_test = batch.y[batch.test_mask]
+        logits_test = logits_cal[test_mask]
+        y_test = batch.y[test_mask]
         id_mask = (y_test.sum(dim=1) == 1)
         if id_mask.any():
             id_logits = logits_test[id_mask]

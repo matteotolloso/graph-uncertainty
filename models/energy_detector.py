@@ -16,15 +16,21 @@ class EnergyDetector(L.LightningModule):
         for param in self.backbone.parameters():
             param.requires_grad = False
         
-        # Metrics for validation and testing
-        self.val_auroc = AUROC(task="binary")
-        self.test_auroc = AUROC(task="binary")
+    def _split_mask(self, batch, split):
+        if hasattr(batch, "batch_size") and hasattr(batch, "n_id"):
+            mask = torch.zeros(batch.num_nodes, dtype=torch.bool, device=batch.x.device)
+            mask[:batch.batch_size] = True
+            return mask
+        return getattr(batch, f"{split}_mask")
+
+    def _auroc_score(self, scores, targets):
+        return AUROC(task="binary").to(scores.device)(scores, targets)
 
     def forward(self, data):
         """
         Calculates the energy score for all nodes in the data object.
         This corresponds to Equation (4) in Liu et al. (2020).
-        The OOD score is the negative energy score.
+        The OOD score is the energy score, where larger values are more OOD.
         """
         with torch.no_grad():
             # The energy score is based on the pre-softmax logits
@@ -34,9 +40,8 @@ class EnergyDetector(L.LightningModule):
         # A higher energy score means more likely to be OOD.
         energy_scores = -torch.logsumexp(logits, dim=1)
 
-        # For OOD detection, a higher score should indicate in-distribution.
-        # Since lower energy means more ID, we use the negative energy as the OOD score.
-        ood_scores = -energy_scores
+        # Higher energy means more OOD; AUROC targets use 1 = OOD.
+        ood_scores = energy_scores
 
         return ood_scores
 
@@ -47,30 +52,28 @@ class EnergyDetector(L.LightningModule):
         but for Energy, it's just for logging as there's nothing to tune.
         """
         ood_scores_all = self(batch).cpu()
-        val_mask = batch.val_mask
+        val_mask = self._split_mask(batch, "val").cpu()
         
         ood_scores_val = ood_scores_all[val_mask]
-        y_val = batch.y[val_mask]
+        y_val = batch.y.cpu()[val_mask]
 
         # OOD labels are 1, ID labels are 0
         targets = (y_val.sum(dim=1) == 0).long()
 
-        self.val_auroc.update(ood_scores_val, targets)
-        self.log('val_auroc', self.val_auroc, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val_auroc", self._auroc_score(ood_scores_val, targets), prog_bar=True)
 
     def test_step(self, batch, batch_idx):
         """
         Evaluates the final model on the test set.
         """
         ood_scores_all = self(batch).cpu()
-        test_mask = batch.test_mask
+        test_mask = self._split_mask(batch, "test").cpu()
 
         ood_scores_test = ood_scores_all[test_mask]
-        y_test = batch.y[test_mask]
+        y_test = batch.y.cpu()[test_mask]
         
         targets = (y_test.sum(dim=1) == 0).long()
 
-        self.test_auroc.update(ood_scores_test, targets)
-        self.log('test_auroc', self.test_auroc, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("test_auroc", self._auroc_score(ood_scores_test, targets), prog_bar=True)
 
     def configure_optimizers(self): return None

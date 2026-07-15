@@ -1,12 +1,17 @@
 import os
 import re
 
-def find_best_checkpoints(dataset_name: str, num_models: int) -> list[str]:
+def find_best_checkpoints(
+    dataset_name: str,
+    num_models: int,
+    metric_name: str = "val_auroc",
+    mode: str = "max",
+    fallback_metric_names: tuple[str, ...] = ("val_f1",),
+) -> list[str]:
     """
     Finds the paths of the top-performing model checkpoints for a given dataset.
-    Assumes the checkpoints are named in the format:
-    {run_id}_{dataset_name}_val_f1={val_f1:.4f}.ckpt
-    Assumes all checkpoints are stored in a single 'checkpoints' directory.
+    Checkpoints are expected to include the monitored validation metric in the
+    filename, e.g. {run_id}_{dataset_name}_val_auroc={score:.4f}.ckpt.
 
     Args:
         dataset_name (str): The name of the dataset (e.g., 'Cora').
@@ -22,27 +27,40 @@ def find_best_checkpoints(dataset_name: str, num_models: int) -> list[str]:
     if not os.path.isdir(checkpoint_dir):
         raise FileNotFoundError(f"Root checkpoint directory not found: '{checkpoint_dir}'. Please run training first.")
 
-    checkpoints = []
-    # Regex to find the val_f1 score in the filename
-    score_pattern = re.compile(r"val_f1=([\d\.]+)\.ckpt")
+    def collect_checkpoints(metric: str):
+        checkpoints = []
+        score_pattern = re.compile(rf"{re.escape(metric)}=([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\.ckpt")
 
-    for filename in os.listdir(checkpoint_dir):
-        ### CORRECTED: Filter files by dataset name ###
-        # Check if the filename matches the dataset and is a checkpoint file
-        if f"_{dataset_name}_" in filename and filename.endswith(".ckpt"):
-            match = score_pattern.search(filename)
-            if match:
-                score = float(match.group(1))
-                full_path = os.path.join(checkpoint_dir, filename)
-                checkpoints.append((full_path, score))
+        for filename in os.listdir(checkpoint_dir):
+            # Check if the filename matches the dataset and is a checkpoint file
+            if f"_{dataset_name}_" in filename and filename.endswith(".ckpt"):
+                match = score_pattern.search(filename)
+                if match:
+                    score = float(match.group(1))
+                    full_path = os.path.join(checkpoint_dir, filename)
+                    checkpoints.append((full_path, score))
+        return checkpoints
 
-    # Sort checkpoints by F1 score in descending order
-    checkpoints.sort(key=lambda x: x[1], reverse=True)
+    selected_metric = metric_name
+    checkpoints = collect_checkpoints(selected_metric)
+
+    for fallback_metric in fallback_metric_names:
+        if checkpoints:
+            break
+        checkpoints = collect_checkpoints(fallback_metric)
+        if checkpoints:
+            selected_metric = fallback_metric
+            print(
+                f"Warning: No '{metric_name}' checkpoints found for '{dataset_name}'. "
+                f"Falling back to legacy '{fallback_metric}' checkpoints."
+            )
+
+    checkpoints.sort(key=lambda x: x[1], reverse=(mode == "max"))
 
     if not checkpoints:
         raise FileNotFoundError(
-            f"No valid checkpoints found for dataset '{dataset_name}' in {checkpoint_dir}. "
-            f"Ensure filenames have the format '..._{dataset_name}_val_f1=...'.")
+            f"No valid checkpoints found for dataset '{dataset_name}' in {checkpoint_dir} "
+            f"with metric '{metric_name}' or fallbacks {fallback_metric_names}.")
 
     # Select the top M models
     top_checkpoints = checkpoints[:num_models]
@@ -50,16 +68,22 @@ def find_best_checkpoints(dataset_name: str, num_models: int) -> list[str]:
     if len(top_checkpoints) < num_models:
         print(f"Warning: Found only {len(top_checkpoints)} checkpoints for '{dataset_name}', but {num_models} were requested.")
 
-    print(f"Found {len(top_checkpoints)} top models for '{dataset_name}' to form the ensemble:")
+    print(f"Found {len(top_checkpoints)} top models for '{dataset_name}' using '{selected_metric}':")
     for path, score in top_checkpoints:
         print(f"  - Path: {os.path.basename(path)}, Score: {score:.4f}")
         
     return [path for path, score in top_checkpoints]
 
-def search_best_model(save_path, dataset_name):
+def search_best_model(
+    save_path,
+    dataset_name,
+    metric_name: str = "val_auroc",
+    mode: str = "max",
+    fallback_metric_names: tuple[str, ...] = ("val_f1",),
+):
     """
-    Search for the best model in the given save path based on the dataset name.
-    It assumes the models are saved in the format: {run_id}_{dataset_name}_val_f1={val_f1:.4f}.ckpt
+    Search for the best model in the given save path based on the dataset name
+    and validation metric in the checkpoint filename.
 
     Args:
         save_path (str): The path where the models are saved.
@@ -68,25 +92,46 @@ def search_best_model(save_path, dataset_name):
     Returns:
         str: The path to the best model file.
     """
-    best_score = float('-inf')
-    best_model_path = None
+    def search_metric(metric: str):
+        best_score = float('-inf') if mode == "max" else float("inf")
+        best_model_path = None
+        pattern = re.compile(
+            rf".+_{re.escape(dataset_name)}_{re.escape(metric)}=([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\.ckpt$"
+        )
 
-    # Regex pattern to extract val_f1 score
-    pattern = re.compile(rf".+_{re.escape(dataset_name)}_val_f1=([0-9.]+)\.ckpt$")
+        for filename in os.listdir(save_path):
+            match = pattern.match(filename)
+            if match:
+                score_str = match.group(1)
+                try:
+                    score = float(score_str)
+                    is_better = score > best_score if mode == "max" else score < best_score
+                    if is_better:
+                        best_score = score
+                        best_model_path = os.path.join(save_path, filename)
+                except ValueError:
+                    continue  # In case of malformed float string
+        return best_model_path
 
-    for filename in os.listdir(save_path):
-        match = pattern.match(filename)
-        if match:
-            val_f1_str = match.group(1)
-            try:
-                val_f1 = float(val_f1_str)
-                if val_f1 > best_score:
-                    best_score = val_f1
-                    best_model_path = os.path.join(save_path, filename)
-            except ValueError:
-                continue  # In case of malformed float string
+    selected_metric = metric_name
+    best_model_path = search_metric(selected_metric)
+
+    for fallback_metric in fallback_metric_names:
+        if best_model_path is not None:
+            break
+        best_model_path = search_metric(fallback_metric)
+        if best_model_path is not None:
+            selected_metric = fallback_metric
+            print(
+                f"Warning: No '{metric_name}' checkpoint found for '{dataset_name}' in '{save_path}'. "
+                f"Falling back to legacy '{fallback_metric}'."
+            )
 
     if best_model_path is None:
-        raise FileNotFoundError(f"No valid model files found for dataset '{dataset_name}' in '{save_path}'")
+        raise FileNotFoundError(
+            f"No valid model files found for dataset '{dataset_name}' in '{save_path}' "
+            f"with metric '{metric_name}' or fallbacks {fallback_metric_names}"
+        )
 
+    print(f"Selected checkpoint for '{dataset_name}' using '{selected_metric}': {os.path.basename(best_model_path)}")
     return best_model_path

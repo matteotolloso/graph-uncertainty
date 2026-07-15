@@ -20,7 +20,7 @@ def vanilla_train(project_name, dataset_name, save_path):
     L.seed_everything(42, workers=True)
 
     wandb_logger = WandbLogger(project=project_name)
-    monitor = config.get("monitor", "val_f1")
+    monitor = config.get("monitor", "val_auroc")
     mode = config.get("mode", "max")
 
     # Instantiate the model

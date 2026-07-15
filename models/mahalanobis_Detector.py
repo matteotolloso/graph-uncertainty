@@ -21,8 +21,15 @@ class MahalanobisDetector(L.LightningModule):
         self.class_means = None
         self.shared_covariance_inv = None
 
-        self.val_auroc = AUROC(task="binary")
-        self.test_auroc = AUROC(task="binary")
+    def _split_mask(self, batch, split):
+        if hasattr(batch, "batch_size") and hasattr(batch, "n_id"):
+            mask = torch.zeros(batch.num_nodes, dtype=torch.bool, device=batch.x.device)
+            mask[:batch.batch_size] = True
+            return mask
+        return getattr(batch, f"{split}_mask")
+
+    def _auroc_score(self, scores, targets):
+        return AUROC(task="binary").to(scores.device)(scores, targets)
 
     # ---------------- feature extractor ----------------
     def _get_features(self, data):
@@ -141,25 +148,23 @@ class MahalanobisDetector(L.LightningModule):
     # ---------------- Lightning eval hooks ----------------
     def validation_step(self, batch, batch_idx):
         ood_scores_all = self(batch).cpu()
-        val_mask = batch.val_mask
+        val_mask = self._split_mask(batch, "val").cpu()
 
         ood_scores_val = ood_scores_all[val_mask]
-        y_val = batch.y[val_mask]
+        y_val = batch.y.cpu()[val_mask]
         targets = (y_val.sum(dim=1) == 0).long()  # 1 = OOD, 0 = ID
 
-        self.val_auroc.update(ood_scores_val, targets)
-        self.log("val_auroc", self.val_auroc, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val_auroc", self._auroc_score(ood_scores_val, targets), prog_bar=True)
 
     def test_step(self, batch, batch_idx):
         ood_scores_all = self(batch).cpu()
-        test_mask = batch.test_mask
+        test_mask = self._split_mask(batch, "test").cpu()
 
         ood_scores_test = ood_scores_all[test_mask]
-        y_test = batch.y[test_mask]
+        y_test = batch.y.cpu()[test_mask]
         targets = (y_test.sum(dim=1) == 0).long()
 
-        self.test_auroc.update(ood_scores_test, targets)
-        self.log("test_auroc", self.test_auroc, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("test_auroc", self._auroc_score(ood_scores_test, targets), prog_bar=True)
 
     def configure_optimizers(self):
         return None

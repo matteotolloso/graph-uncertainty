@@ -44,9 +44,9 @@ def credal_LJ_train(project_name, dataset_name, **kwargs):
         log_every_n_steps=1,
         callbacks=[
             EarlyStopping(
-                monitor=config.get("monitor", "val_loss"),
+                monitor=config.get("monitor", "val_auroc_EU"),
                 patience=config["patience"],
-                mode=config.get("mode", "min"),
+                mode=config.get("mode", "max"),
             ),
         ],
     )

@@ -46,16 +46,16 @@ def cagcn_train(project_name, dataset_name, **kwargs):
         max_epochs=config.get("max_epochs", 200),
         callbacks=[
             EarlyStopping(
-                monitor=config.get("monitor", "val_nll"),
+                monitor=config.get("monitor", "val_auroc"),
                 patience=config["patience"],
-                mode=config.get("mode", "min"),
+                mode=config.get("mode", "max"),
             ),
         ],
     )
 
     print(f"\n--- Training CaGCN (final scaling) on {dataset_name} ---")
-    # We still pass both loaders so Lightning can run its val loop.
-    trainer.fit(model, train_dataloaders=train_loader, val_dataloaders=val_loader)
+    # CaGCN calibrates on validation nodes; use val_loader for the fitting stage.
+    trainer.fit(model, train_dataloaders=val_loader, val_dataloaders=val_loader)
     print(f"--- Testing on {dataset_name} ---")
     trainer.test(model, dataloaders=test_loader)
 

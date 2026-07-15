@@ -10,6 +10,10 @@ from models.GEBM_detector import GEBMModule
 from dataset_loader.dataset_loader import dataset_loader
 from utils.model_manager import find_best_checkpoints
 
+
+def _base_graph(loader):
+    return getattr(loader, "data", None) or loader.dataset[0]
+
 def gebm_test(project_name, dataset_name, **kwargs):
     wandb.init(project=project_name, job_type="test_gebm")
     config = wandb.config
@@ -21,13 +25,13 @@ def gebm_test(project_name, dataset_name, **kwargs):
     model = GEBMModule(checkpoint_path=ckpt_path)
 
     # 3) Get loaders
-    train_loader, _, test_loader = dataset_loader(dataset_name, config)
+    train_loader, val_loader, test_loader = dataset_loader(dataset_name, config)
 
     # 4) FIT GEBM on TRAIN NODES (first train batch is enough for transductive full graph)
-    train_batch = next(iter(train_loader))
+    train_batch = _base_graph(train_loader)
     model.fit_gebm(train_batch)
 
-    # 5) Lightning test
+    # 5) Lightning validation/test
     wandb_logger = WandbLogger(project=project_name)
     trainer = L.Trainer(
         devices="auto",
@@ -35,6 +39,9 @@ def gebm_test(project_name, dataset_name, **kwargs):
         logger=wandb_logger,
         log_every_n_steps=1,
     )
+    print(f"\n--- Validating GEBM on {dataset_name} ---")
+    trainer.validate(model, dataloaders=val_loader)
+
     print(f"\n--- Testing GEBM on {dataset_name} ---")
     trainer.test(model, dataloaders=test_loader)
 

@@ -64,12 +64,31 @@ class ODINDetector(L.LightningModule):
 
         return ood_scores
 
+    def _split_mask(self, batch, split):
+        if hasattr(batch, "batch_size") and hasattr(batch, "n_id"):
+            mask = torch.zeros(batch.num_nodes, dtype=torch.bool, device=batch.x.device)
+            mask[:batch.batch_size] = True
+            return mask
+        return getattr(batch, f"{split}_mask")
 
+    def _eval_step(self, batch, split: str):
+        id_scores_all = self(batch)
+        split_mask = self._split_mask(batch, split)
+        id_scores = id_scores_all[split_mask]
+        y_split = batch.y[split_mask]
+        targets = (y_split.sum(dim=1) == 0).long()
 
-    def train_step(self, batch, batch_idx): # TODO write correctly
-        pass
-        
-    
+        # AUROC expects higher scores for the positive class; target 1 is OOD.
+        ood_scores = -id_scores
+        auroc = AUROC(task="binary").to(ood_scores.device)(ood_scores, targets)
+        self.log(f"{split}_auroc", auroc, prog_bar=True)
+        return auroc
+
+    def validation_step(self, batch, batch_idx):
+        return self._eval_step(batch, "val")
+
     def test_step(self, batch, batch_idx):
-        pass
-        # the same
+        return self._eval_step(batch, "test")
+
+    def configure_optimizers(self):
+        return None

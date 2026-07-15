@@ -33,9 +33,7 @@ def knn_LJ_test(project_name, dataset_name, save_path, **kwargs):
     
     # --- 4. Load ALL Datasets needed ---
     # The trainer needs access to the train_loader to pass it to the model's setup hook.
-    train_loader, val_loader, test_loader = dataset_loader(
-        dataset_name, config={},
-    )
+    train_loader, val_loader, test_loader = dataset_loader(dataset_name, config)
 
     # --- 2. Instantiate the KNN_LJ Detector ---
     knn_lj_model = KNN_LJ_Detector(

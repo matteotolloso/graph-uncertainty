@@ -43,12 +43,14 @@ def ensemble_tester(project_name, dataset_name, **kwargs):
         log_every_n_steps=1,
     )
 
-    # --- 4. Load the Test Dataset ---
-    # We only need the test_loader for this evaluation
-    _, _, test_loader = dataset_loader(dataset_name, config)
+    # --- 4. Load Validation and Test Datasets ---
+    _, val_loader, test_loader = dataset_loader(dataset_name, config)
 
-    # --- 5. Run the Test ---
+    # --- 5. Run Validation and Test ---
     # We DO NOT call trainer.fit(). This is inference only.
+    print(f"\n--- Validating Credal Ensemble on {dataset_name} ---")
+    trainer.validate(ensemble_model, val_loader)
+
     print(f"\n--- Testing Credal Ensemble on {dataset_name} ---")
     trainer.test(ensemble_model, test_loader)
 

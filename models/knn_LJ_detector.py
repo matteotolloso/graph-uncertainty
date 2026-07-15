@@ -23,10 +23,17 @@ class KNN_LJ_Detector(L.LightningModule):
         self.k = k
         self.faiss_index = None
         
-        self.val_auroc = AUROC(task="binary")
-        self.test_auroc = AUROC(task="binary")
-
         self.train_loader = train_loader  # Store the train_loader for use in setup
+
+    def _split_mask(self, batch, split):
+        if hasattr(batch, "batch_size") and hasattr(batch, "n_id"):
+            mask = torch.zeros(batch.num_nodes, dtype=torch.bool, device=batch.x.device)
+            mask[:batch.batch_size] = True
+            return mask
+        return getattr(batch, f"{split}_mask")
+
+    def _auroc_score(self, scores, targets):
+        return AUROC(task="binary").to(scores.device)(scores, targets)
 
     def _get_joint_embeddings(self, data):
         """
@@ -75,8 +82,8 @@ class KNN_LJ_Detector(L.LightningModule):
             if not self.train_loader:
                 raise RuntimeError("A train_dataloader is required in the Trainer to build the KNN index.")
             
-            # Extract the single graph Data object from the train_loader
-            train_data = self.train_loader.dataset[0]
+            # Extract the original graph object from either full-batch or NeighborLoader.
+            train_data = getattr(self.train_loader, "data", None) or self.train_loader.dataset[0]
             data = train_data.to(self.device)
             self.backbone.to(self.device)
 
@@ -104,7 +111,7 @@ class KNN_LJ_Detector(L.LightningModule):
         distances, _ = self.faiss_index.search(all_embeddings_norm.cpu().numpy(), self.k)
         
         kth_distances = distances[:, -1]
-        ood_scores = -torch.from_numpy(kth_distances)
+        ood_scores = torch.from_numpy(kth_distances)
 
         return ood_scores
 
@@ -119,15 +126,13 @@ class KNN_LJ_Detector(L.LightningModule):
         ood_scores_all = self(batch).cpu() # Ensure scores are on CPU
         
         # Now both the scores and the mask from the batch are on the CPU
-        val_mask = batch.val_mask.cpu()
+        val_mask = self._split_mask(batch, "val").cpu()
         ood_scores_val = ood_scores_all[val_mask]
         
-        y_val = batch.y[val_mask]
+        y_val = batch.y.cpu()[val_mask]
         targets = (y_val.sum(dim=1) == 0).long()
 
-        # The metric can now safely compute on CPU tensors
-        self.val_auroc.update(ood_scores_val, targets)
-        self.log('val_auroc', self.val_auroc, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val_auroc", self._auroc_score(ood_scores_val, targets), prog_bar=True)
 
     def test_step(self, batch, batch_idx):
         """
@@ -137,14 +142,12 @@ class KNN_LJ_Detector(L.LightningModule):
         # Apply the same logic here for consistency and safety
         ood_scores_all = self(batch).cpu() # Ensure scores are on CPU
         
-        test_mask = batch.test_mask.cpu()
+        test_mask = self._split_mask(batch, "test").cpu()
         ood_scores_test = ood_scores_all[test_mask]
         
-        y_test = batch.y[test_mask]
+        y_test = batch.y.cpu()[test_mask]
         targets = (y_test.sum(dim=1) == 0).long()
         
-        # The metric can now safely compute on CPU tensors
-        self.test_auroc.update(ood_scores_test, targets)
-        self.log('test_auroc', self.test_auroc, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("test_auroc", self._auroc_score(ood_scores_test, targets), prog_bar=True)
 
     def configure_optimizers(self): return None
