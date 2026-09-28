@@ -1,0 +1,32 @@
+# Global run configuration. Resolution order (later wins):
+#   configs/defaults.yaml  ->  configs/methods/<method>.yaml `defaults`
+#   ->  dataset metadata (in_channels, out_channels, batch_size, num_neighbors)
+#   ->  W&B sweep values / `cgnn run --set key=value`.
+# Every key below is logged to W&B with the run config.
+
+# --- reproducibility ---------------------------------------------------------
+seed: 42                    # global RNG seed (seed_everything). Legacy runs: always 42.
+split_seed: 0               # random-split datasets (arxiv, patents, coauthor, synthetic).
+                            # `legacy` = old behaviour (split drawn from the global RNG after model
+                            # init: architecture-dependent, NOT shared with post-hoc methods).
+deterministic: true         # Lightning deterministic mode (post-hoc methods override to false, legacy)
+
+# --- evaluation --------------------------------------------------------------
+auroc_impl: exact           # exact (rank-based, default) | torchmetrics (legacy: saturates scores
+                            # outside [0,1] into ties -> wrong AUROC for Mahalanobis/Energy/GEBM)
+min_entropy_method: greedy  # AU solver: greedy (legacy) | multistart | exact | auto (see cgnn/uncertainty/entropy.py)
+test_ckpt: last             # which weights `trainer.test` uses for trainable methods:
+                            # last (legacy: last epoch = best + patience) | best (best val checkpoint)
+
+# --- hardware (shared server: NEVER more than 2 GPUs in total) ----------------
+accelerator: auto           # auto | gpu | cpu
+devices: 1                  # GPUs per run; the runner refuses values > 2
+
+# --- checkpoints / backbones -------------------------------------------------
+save_checkpoint: true       # trainable methods save their best checkpoint under $CGNN_CKPT_DIR/<method>/
+backbone_split_check: error # post-hoc methods: error | warn | off when the backbone was trained on a
+                            # different split (checked via the split fingerprint stored in checkpoints)
+
+# --- training loop -----------------------------------------------------------
+early_stopping: true
+num_sanity_val_steps: 0

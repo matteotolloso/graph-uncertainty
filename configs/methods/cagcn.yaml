@@ -1,0 +1,47 @@
+# Paper: CaGCN (post-hoc calibration GCN trained on ID validation nodes).
+# NOTE: `lambda_cal` is ignored by the model (legacy sweep dimension kept for comparability).
+#
+# defaults: used by `cgnn run` (and as the base config of every sweep run).
+# sweep:    W&B sweep definition; dataset metadata (in/out_channels, batch_size, num_neighbors) is merged in by `cgnn sweep`.
+defaults:
+  backbone_rank: 0
+  calib_hidden: 16
+  calib_layers: 2
+  lr: 0.01
+  weight_decay: 0.005
+  max_epochs: 200
+  patience: 10
+  monitor: val_auroc
+  mode: max
+sweep:
+  method: bayes
+  metric:
+    name: val_auroc
+    goal: maximize
+  parameters:
+    backbone_rank:
+      values: [0, 1, 2, 3, 4]
+    lambda_cal:
+      values: [0.25, 0.5, 0.75]
+    calib_hidden:
+      values: [8, 16, 32]
+    calib_layers:
+      values: [1, 2]
+    lr:
+      distribution: uniform
+      min: 1.0e-05
+      max: 0.1
+    weight_decay:
+      distribution: uniform
+      min: 1.0e-07
+      max: 0.1
+    max_epochs:
+      values: [200]
+    patience:
+      values: [10]
+    monitor:
+      values: [val_auroc]
+    mode:
+      values: [max]
+    num_sanity_val_steps:
+      values: [0]

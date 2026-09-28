@@ -1,0 +1,47 @@
+# NEW (not in the paper code): CGNN with the input features z^0 included in the joint latent,
+# i.e. exactly Eq. 14 of the paper ([z^0 || z^1 || ... || z^L]). The AAAI code omitted z^0.
+#
+# defaults: used by `cgnn run` (and as the base config of every sweep run).
+# sweep:    W&B sweep definition; dataset metadata (in/out_channels, batch_size, num_neighbors) is merged in by `cgnn sweep`.
+defaults:  # ~best Squirrel/ArXiv sweep config. SAGE on Squirrel/Chameleon needs >32 GB GPU: use --cpu there
+  gnn_type: SAGE
+  hidden_channels: 64
+  num_layers: 2
+  lr: 0.003
+  delta: 0.79
+  lambda_cls: 1.0
+  patience: 20
+  monitor: val_auroc_EU
+  mode: max
+sweep:
+  method: bayes
+  metric:
+    name: val_auroc_EU
+    goal: maximize
+  parameters:
+    lr:
+      distribution: uniform
+      min: 1.0e-05
+      max: 0.01
+    hidden_channels:
+      values: [64]
+    num_layers:
+      values: [2]
+    delta:
+      distribution: uniform
+      min: 0.5
+      max: 1.0
+    lambda_cls:
+      distribution: uniform
+      min: 0.1
+      max: 2.0
+    gnn_type:
+      values: [GCN, SAGE]
+    patience:
+      values: [20]
+    monitor:
+      values: [val_auroc_EU]
+    mode:
+      values: [max]
+    num_sanity_val_steps:
+      values: [0]

@@ -1,0 +1,15 @@
+# Paper: KNN (post-hoc, second-to-last layer, top-1 vanilla backbone).
+#
+# defaults: used by `cgnn run` (and as the base config of every sweep run).
+# sweep:    W&B sweep definition; dataset metadata (in/out_channels, batch_size, num_neighbors) is merged in by `cgnn sweep`.
+defaults:
+  deterministic: false  # legacy post-hoc testers did not set it
+  k: 50
+sweep:
+  method: grid
+  metric:
+    name: val_auroc
+    goal: maximize
+  parameters:
+    k:
+      values: [5, 10, 20, 50, 100, 200]

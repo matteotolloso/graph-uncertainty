@@ -1,0 +1,15 @@
+# Classical Ensemble (*_classic metrics) and CGNN by Ensemble (*_credal metrics) from the top-M vanilla checkpoints.
+#
+# defaults: used by `cgnn run` (and as the base config of every sweep run).
+# sweep:    W&B sweep definition; dataset metadata (in/out_channels, batch_size, num_neighbors) is merged in by `cgnn sweep`.
+defaults:
+  deterministic: false  # legacy post-hoc testers did not set it
+  M: 5
+sweep:
+  method: grid
+  metric:
+    name: val_auroc_EU_credal
+    goal: maximize
+  parameters:
+    M:
+      values: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
