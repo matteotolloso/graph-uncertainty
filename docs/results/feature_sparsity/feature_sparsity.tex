@@ -1,0 +1,22 @@
+\begin{table}[t]
+\centering
+\small
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{lrrrrrrr}
+\toprule
+Dataset & $N$ & $D$ & $\mathrm{nnz}(X)$ & Density & Sparsity & Mean nnz/node & Zero-node frac. \\
+\midrule
+Chameleon & 2277 & 2325 & 29157 & 5.508e-03 & 9.945e-01 & 12.81 & 1.023e-01 \\
+Squirrel & 5201 & 2089 & 93477 & 8.604e-03 & 9.914e-01 & 17.97 & 3.172e-02 \\
+Coauthor & 18333 & 6805 & 1092079 & 8.754e-03 & 9.912e-01 & 59.57 & 0.000e+00 \\
+Cora & 2708 & 1433 & 49216 & 1.268e-02 & 9.873e-01 & 18.17 & 0.000e+00 \\
+Patents & 2923922 & 269 & 14619610 & 1.859e-02 & 9.814e-01 & 5.00 & 0.000e+00 \\
+Reddit2 & 232965 & 602 & 139733129 & 9.964e-01 & 3.649e-03 & 599.80 & 0.000e+00 \\
+Roman Empire & 22662 & 300 & 6780000 & 9.973e-01 & 2.736e-03 & 299.18 & 2.736e-03 \\
+ArXiv & 169343 & 128 & 21675862 & 1.000e+00 & 1.938e-06 & 128.00 & 0.000e+00 \\
+Amazon-Ratings & 24492 & 300 & 7347600 & 1.000e+00 & 0.000e+00 & 300.00 & 0.000e+00 \\
+\bottomrule
+\end{tabular}
+\caption{Node-feature (not graph-edge) sparsity. Floating-point entries satisfy $|x|>1.0e-12$ to count as nonzero.}
+\label{tab:feature-sparsity}
+\end{table}

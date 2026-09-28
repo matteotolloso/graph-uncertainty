@@ -5,6 +5,8 @@
   `scripts/campaigns/v02.jobs`: re-run of the experiments affected by the audit (W&B `graph-uncertainty-v02`).
 - Sweep agents no longer leak GPU memory after a crashed run (the failure is logged, the run marked failed).
 - `cgnn results` skips runs tagged `superseded` in W&B.
+- `scripts/analysis/feature_sparsity.py` (node-feature sparsity per dataset, on top of `cgnn.data`); results in
+  `docs/results/feature_sparsity/` (CSV, JSON, LaTeX).
 
 ## 0.2.0 — agent-ready refactor
 Verified equivalence: with `--set auroc_impl=torchmetrics split_seed=legacy` every one of the 20 legacy

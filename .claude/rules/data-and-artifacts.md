@@ -17,5 +17,5 @@ These directories hold weeks of compute and are gitignored. Treat them as read-o
   Code must not depend on the current working directory.
 - W&B is shared with humans: use `--wandb disabled` (or `offline`) for smoke tests and debugging, and don't
   create sweeps "just to try". Never delete W&B runs or sweeps.
-- Untracked files at the repo root (e.g. `compute_feature_sparsity.py`, `results/`) belong to the user:
-  leave them alone.
+- Untracked files you did not create belong to the user: leave them alone (don't commit, move or delete them
+  unless asked).
