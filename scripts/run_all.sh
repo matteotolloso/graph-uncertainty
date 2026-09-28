@@ -1,3 +1,8 @@
+#!/usr/bin/env bash
+# Legacy run log from the AAAI experiments (kept verbatim below; lines are notes, not a script).
+# `python main.py ...` still works (it forwards to `cgnn sweep`). For a clean, ordered pipeline use
+# scripts/reproduce_paper.sh. Shared server: never more than 2 GPUs in total.
+cd "$(dirname "$0")/.." || exit 1
 
 
 # python main.py --dataset chameleon --model vanilla --count 100    ;
