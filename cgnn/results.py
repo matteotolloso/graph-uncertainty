@@ -4,7 +4,8 @@ Protocol implemented by :func:`summarize`:
 
 1. Runs of ``(method, dataset)`` are those of the sweep named
    ``<dataset>_<method>`` (or single runs whose config has ``cgnn_method`` /
-   ``cgnn_dataset``). Only finished runs with both val and test metrics count.
+   ``cgnn_dataset``). Only finished runs with both val and test metrics count; runs tagged
+   ``superseded`` in W&B are skipped.
 2. For every candidate uncertainty *component* (e.g. ``EU``/``AU`` for credal
    methods, ``""`` for single-score baselines) the replicate set is chosen on
    validation: ``aggregate="topk"`` = the ``k`` runs with the best val score;
@@ -25,6 +26,9 @@ from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
+
+# Runs carrying this W&B tag are ignored (e.g. a sweep re-run after fixing its backbones); tag, never delete.
+SUPERSEDED_TAG = "superseded"
 
 # Keys that identify a replicate rather than a hyper-parameter configuration.
 REPLICATE_KEYS = {"seed", "backbone_rank", "split_seed", "cgnn_version", "wandb_version", "_wandb"}
@@ -255,12 +259,13 @@ def fetch_runs(
         if parsed is None or not wanted(*parsed):
             continue
         for run in api.runs(path, filters={"sweep": sweep.id}, per_page=500, lazy=False):
-            rows.append(_row_from_run(run, *parsed))
+            if SUPERSEDED_TAG not in run.tags:
+                rows.append(_row_from_run(run, *parsed))
 
     single = {"config.cgnn_method": {"$exists": True}}
     for run in api.runs(path, filters=single, per_page=500, lazy=False):
-        if run.sweep_name:
-            continue  # already counted through its sweep
+        if run.sweep_name or SUPERSEDED_TAG in run.tags:
+            continue  # counted through its sweep / excluded
         ds, method = run.config.get("cgnn_dataset"), run.config.get("cgnn_method")
         if ds and method and wanted(ds, method):
             rows.append(_row_from_run(run, ds, method))

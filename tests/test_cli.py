@@ -82,3 +82,30 @@ def test_sweep_agent_function_runs_with_wandb_disabled(tmp_path, monkeypatch):
     agent_function("credal", "synthetic", "test-project", overrides)()
     summaries = list((tmp_path / "out" / "runs").glob("*_synthetic_credal_*.json"))
     assert len(summaries) == 1
+
+
+def test_sweep_agent_function_survives_a_failed_run(tmp_path, monkeypatch):
+    """A crashing run (e.g. CUDA OOM) is marked failed and does not propagate its traceback to the agent,
+    which would keep the run's tensors alive and make every following run of the agent fail too."""
+    import weakref
+
+    import torch
+
+    import cgnn.runner
+    import wandb
+    from cgnn.wandb_utils import agent_function
+
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+    held = []
+
+    def crash(*args, **kwargs):
+        big = torch.zeros(1000)
+        held.append(weakref.ref(big))
+        raise torch.OutOfMemoryError("simulated")
+
+    exit_codes = []
+    monkeypatch.setattr(cgnn.runner, "run_experiment", crash)
+    monkeypatch.setattr(wandb, "finish", lambda exit_code=None, **kw: exit_codes.append(exit_code))
+    agent_function("credal", "synthetic", "test-project")()
+    assert exit_codes == [1]
+    assert held[0]() is None  # the failed run's tensors were released

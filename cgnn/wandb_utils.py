@@ -8,6 +8,7 @@ names are ``<dataset>_<method>`` (legacy convention relied upon by
 from __future__ import annotations
 
 import gc
+import traceback
 from collections.abc import Mapping
 from typing import Any
 
@@ -38,6 +39,7 @@ def agent_function(method: str, dataset: str, project: str, overrides: Mapping[s
 
         run = wandb.init(project=project)
         cfg = {**dict(wandb.config), **dict(overrides or {})}
+        failed = False
         try:
             run_experiment(
                 method,
@@ -47,11 +49,15 @@ def agent_function(method: str, dataset: str, project: str, overrides: Mapping[s
                 run_id=run.id,
                 config_callback=log_resolved_config,
             )
-        finally:
-            wandb.finish()
-            gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+        except Exception:
+            # Don't re-raise: the traceback's frames would keep the failed run's GPU tensors alive and
+            # every following run of this agent would go out of memory too (seen after CUDA OOMs).
+            failed = True
+            traceback.print_exc()
+        wandb.finish(exit_code=1 if failed else 0)
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     return _run
 
