@@ -1,0 +1,35 @@
+# <One line: what the method is; paper name if any; caveats.>
+#
+# defaults: used by `cgnn run` (and as the base config of every sweep run).
+# sweep:    W&B sweep definition; dataset metadata (in/out_channels, batch_size, num_neighbors) is merged in by `cgnn sweep`.
+defaults:
+  gnn_type: GCN
+  hidden_channels: 64
+  num_layers: 2
+  lr: 0.001
+  weight_decay: 0.0
+  patience: 20
+  monitor: val_auroc        # must equal sweep.metric.name and be logged on validation
+  mode: max
+sweep:
+  method: bayes             # grid for small discrete spaces (post-hoc methods)
+  metric:
+    name: val_auroc
+    goal: maximize
+  parameters:
+    lr:
+      distribution: log_uniform_values
+      min: 1.0e-05          # YAML needs the ".0" (1e-05 would be read as a string)
+      max: 1.0e-02
+    gnn_type:
+      values: [GCN, SAGE]
+    hidden_channels:
+      values: [64]
+    num_layers:
+      values: [2]
+    patience:
+      values: [20]
+    monitor:
+      values: [val_auroc]
+    mode:
+      values: [max]

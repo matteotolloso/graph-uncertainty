@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest *)",
+      "Bash(pytest *)",
+      "Bash(ruff *)",
+      "Bash(cgnn list *)",
+      "Bash(cgnn describe *)",
+      "Bash(cgnn doctor *)",
+      "Bash(cgnn data *)",
+      "Bash(cgnn --help *)",
+      "Bash(nvidia-smi *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)"
+    ],
+    "deny": [
+      "Bash(rm -rf dataset*)",
+      "Bash(rm -rf checkpoints*)",
+      "Bash(rm -rf wandb*)",
+      "Bash(rm -rf graph-uncertainty*)",
+      "Bash(rm -rf outputs*)",
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "Edit(dataset/**)",
+      "Edit(checkpoints/**)",
+      "Edit(wandb/**)",
+      "Edit(graph-uncertainty/**)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/ruff.sh\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
