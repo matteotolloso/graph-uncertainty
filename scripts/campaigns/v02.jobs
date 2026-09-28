@@ -1,0 +1,102 @@
+# Campaign v0.2: re-run what the audit found affected (docs/known_issues.md). W&B project: graph-uncertainty-v02
+# Run:  nohup python scripts/gpu_queue.py scripts/campaigns/v02.jobs --log-dir outputs/logs/v02 --prefer 6 7 \
+#         > outputs/logs/v02_queue.log 2>&1 &
+# Jobs start in file order when their dependencies are done; at most 2 GPU jobs at a time.
+# Patents: deterministic=false (deterministic scatter needs >40 GB for full-graph eval; see known_issues M8).
+
+# --- H1: AUROC saturation. Energy/Mahalanobis/GEBM with exact AUROC on the paper's backbones
+# (fixed public splits; CPU as in the original runs: Reddit2 full-graph ~52 GB, Squirrel SAGE).
+energy-squirrel                          -                            cpu  source scripts/campaigns/env.sh && cgnn sweep -m energy -d squirrel -p graph-uncertainty-v02 --cpu
+mahalanobis-squirrel                     -                            cpu  source scripts/campaigns/env.sh && cgnn sweep -m mahalanobis -d squirrel -p graph-uncertainty-v02 --cpu
+gebm-squirrel                            -                            cpu  source scripts/campaigns/env.sh && cgnn sweep -m gebm -d squirrel -p graph-uncertainty-v02 --cpu
+energy-reddit2                           -                            cpu  source scripts/campaigns/env.sh && cgnn sweep -m energy -d reddit2 -p graph-uncertainty-v02 --cpu
+mahalanobis-reddit2                      -                            cpu  source scripts/campaigns/env.sh && cgnn sweep -m mahalanobis -d reddit2 -p graph-uncertainty-v02 --cpu
+gebm-reddit2                             -                            cpu  source scripts/campaigns/env.sh && cgnn sweep -m gebm -d reddit2 -p graph-uncertainty-v02 --cpu
+
+# --- H2 + missing backbones: vanilla backbones with split_seed=0 into checkpoints/v02
+vanilla-arxiv                            -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m vanilla -d arxiv -c 50 -p graph-uncertainty-v02
+vanilla-coauthor                         -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m vanilla -d coauthor -c 50 -p graph-uncertainty-v02   # done: GCN runs only (SAGE OOM), superseded by -2
+# Coauthor again with deterministic=false: in the first sweep every SAGE run went OOM on 40 GB GPUs
+vanilla-coauthor-2                       -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m vanilla -d coauthor -c 50 -p graph-uncertainty-v02 --set deterministic=false
+vanilla-amazon_ratings                   -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m vanilla -d amazon_ratings -c 50 -p graph-uncertainty-v02
+vanilla-roman_empire                     -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m vanilla -d roman_empire -c 50 -p graph-uncertainty-v02
+vanilla-patents                          -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m vanilla -d patents -c 50 -p graph-uncertainty-v02 --set deterministic=false
+
+# --- all post-hoc baselines + CaGCN, ensembles, CGNN post train on those backbones
+energy-arxiv                             vanilla-arxiv                gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m energy -d arxiv -p graph-uncertainty-v02
+odin-arxiv                               vanilla-arxiv                gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m odin -d arxiv -p graph-uncertainty-v02
+mahalanobis-arxiv                        vanilla-arxiv                gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m mahalanobis -d arxiv -p graph-uncertainty-v02
+knn-arxiv                                vanilla-arxiv                gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m knn -d arxiv -p graph-uncertainty-v02
+gnnsafe-arxiv                            vanilla-arxiv                gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m gnnsafe -d arxiv -p graph-uncertainty-v02
+ensemble-arxiv                           vanilla-arxiv                gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m ensemble -d arxiv -p graph-uncertainty-v02
+knn_LJ-arxiv                             vanilla-arxiv                cpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m knn_LJ -d arxiv -p graph-uncertainty-v02 --cpu
+gebm-arxiv                               vanilla-arxiv                cpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m gebm -d arxiv -p graph-uncertainty-v02 --cpu
+cagcn-arxiv                              vanilla-arxiv                gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m cagcn -d arxiv -c 30 -p graph-uncertainty-v02
+frozen-arxiv                             vanilla-arxiv                gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m frozen -d arxiv -c 30 -p graph-uncertainty-v02
+energy-coauthor-2                        vanilla-coauthor-2           gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m energy -d coauthor -p graph-uncertainty-v02 --set deterministic=false
+odin-coauthor                            vanilla-coauthor-2           gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m odin -d coauthor -p graph-uncertainty-v02 --set deterministic=false
+mahalanobis-coauthor                     vanilla-coauthor-2           gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m mahalanobis -d coauthor -p graph-uncertainty-v02 --set deterministic=false
+knn-coauthor                             vanilla-coauthor-2           gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m knn -d coauthor -p graph-uncertainty-v02 --set deterministic=false
+gnnsafe-coauthor                         vanilla-coauthor-2           gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m gnnsafe -d coauthor -p graph-uncertainty-v02 --set deterministic=false
+ensemble-coauthor                        vanilla-coauthor-2           gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m ensemble -d coauthor -p graph-uncertainty-v02 --set deterministic=false
+knn_LJ-coauthor                          vanilla-coauthor-2           cpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m knn_LJ -d coauthor -p graph-uncertainty-v02 --cpu --set deterministic=false
+gebm-coauthor                            vanilla-coauthor-2           cpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m gebm -d coauthor -p graph-uncertainty-v02 --cpu --set deterministic=false
+cagcn-coauthor                           vanilla-coauthor-2           gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m cagcn -d coauthor -c 30 -p graph-uncertainty-v02 --set deterministic=false
+frozen-coauthor                          vanilla-coauthor-2           gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m frozen -d coauthor -c 30 -p graph-uncertainty-v02 --set deterministic=false
+energy-amazon_ratings                    vanilla-amazon_ratings       gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m energy -d amazon_ratings -p graph-uncertainty-v02
+odin-amazon_ratings                      vanilla-amazon_ratings       gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m odin -d amazon_ratings -p graph-uncertainty-v02
+mahalanobis-amazon_ratings               vanilla-amazon_ratings       gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m mahalanobis -d amazon_ratings -p graph-uncertainty-v02
+knn-amazon_ratings                       vanilla-amazon_ratings       gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m knn -d amazon_ratings -p graph-uncertainty-v02
+gnnsafe-amazon_ratings                   vanilla-amazon_ratings       gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m gnnsafe -d amazon_ratings -p graph-uncertainty-v02
+ensemble-amazon_ratings                  vanilla-amazon_ratings       gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m ensemble -d amazon_ratings -p graph-uncertainty-v02
+knn_LJ-amazon_ratings                    vanilla-amazon_ratings       cpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m knn_LJ -d amazon_ratings -p graph-uncertainty-v02 --cpu
+gebm-amazon_ratings                      vanilla-amazon_ratings       cpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m gebm -d amazon_ratings -p graph-uncertainty-v02 --cpu
+cagcn-amazon_ratings                     vanilla-amazon_ratings       gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m cagcn -d amazon_ratings -c 30 -p graph-uncertainty-v02
+frozen-amazon_ratings                    vanilla-amazon_ratings       gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m frozen -d amazon_ratings -c 30 -p graph-uncertainty-v02
+energy-roman_empire                      vanilla-roman_empire         gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m energy -d roman_empire -p graph-uncertainty-v02
+odin-roman_empire                        vanilla-roman_empire         gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m odin -d roman_empire -p graph-uncertainty-v02
+mahalanobis-roman_empire                 vanilla-roman_empire         gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m mahalanobis -d roman_empire -p graph-uncertainty-v02
+knn-roman_empire                         vanilla-roman_empire         gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m knn -d roman_empire -p graph-uncertainty-v02
+gnnsafe-roman_empire                     vanilla-roman_empire         gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m gnnsafe -d roman_empire -p graph-uncertainty-v02
+ensemble-roman_empire                    vanilla-roman_empire         gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m ensemble -d roman_empire -p graph-uncertainty-v02
+knn_LJ-roman_empire                      vanilla-roman_empire         cpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m knn_LJ -d roman_empire -p graph-uncertainty-v02 --cpu
+gebm-roman_empire                        vanilla-roman_empire         cpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m gebm -d roman_empire -p graph-uncertainty-v02 --cpu
+cagcn-roman_empire                       vanilla-roman_empire         gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m cagcn -d roman_empire -c 30 -p graph-uncertainty-v02
+frozen-roman_empire                      vanilla-roman_empire         gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m frozen -d roman_empire -c 30 -p graph-uncertainty-v02
+energy-patents                           vanilla-patents              gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m energy -d patents -p graph-uncertainty-v02 --set deterministic=false
+odin-patents                             vanilla-patents              gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m odin -d patents -p graph-uncertainty-v02 --set deterministic=false
+mahalanobis-patents                      vanilla-patents              gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m mahalanobis -d patents -p graph-uncertainty-v02 --set deterministic=false
+knn-patents                              vanilla-patents              gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m knn -d patents -p graph-uncertainty-v02 --set deterministic=false
+gnnsafe-patents                          vanilla-patents              gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m gnnsafe -d patents -p graph-uncertainty-v02 --set deterministic=false
+ensemble-patents                         vanilla-patents              gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m ensemble -d patents -p graph-uncertainty-v02 --set deterministic=false
+knn_LJ-patents                           vanilla-patents              cpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m knn_LJ -d patents -p graph-uncertainty-v02 --cpu --set deterministic=false
+gebm-patents                             vanilla-patents              cpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m gebm -d patents -p graph-uncertainty-v02 --cpu --set deterministic=false
+cagcn-patents                            vanilla-patents              gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m cagcn -d patents -c 30 -p graph-uncertainty-v02 --set deterministic=false
+frozen-patents                           vanilla-patents              gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m frozen -d patents -c 30 -p graph-uncertainty-v02 --set deterministic=false
+
+# --- CGNN and its trainable ablations on the random-split datasets, same split_seed=0 as the baselines
+credal_LJ_dual_head_detached-arxiv       -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal_LJ_dual_head_detached -d arxiv -c 50 -p graph-uncertainty-v02
+credal-arxiv                             -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal -d arxiv -c 50 -p graph-uncertainty-v02
+credal_LJ-arxiv                          -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal_LJ -d arxiv -c 50 -p graph-uncertainty-v02
+credal_LJ_dual_head_detached-coauthor    -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal_LJ_dual_head_detached -d coauthor -c 50 -p graph-uncertainty-v02 --set deterministic=false
+credal-coauthor                          -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal -d coauthor -c 50 -p graph-uncertainty-v02 --set deterministic=false
+credal_LJ-coauthor                       -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal_LJ -d coauthor -c 50 -p graph-uncertainty-v02 --set deterministic=false
+credal_LJ_dual_head_detached-patents     -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal_LJ_dual_head_detached -d patents -c 50 -p graph-uncertainty-v02 --set deterministic=false
+credal-patents                           -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal -d patents -c 50 -p graph-uncertainty-v02 --set deterministic=false
+credal_LJ-patents                        -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal_LJ -d patents -c 50 -p graph-uncertainty-v02 --set deterministic=false
+
+# --- M1/M2: CGNN with z^0 (paper Eq. 14) and the one-factor last-layer ablation, all datasets
+credal_LJ0_dual_head_detached-squirrel   -                            cpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal_LJ0_dual_head_detached -d squirrel -c 50 -p graph-uncertainty-v02 --cpu
+credal_LJ0_dual_head_detached-arxiv      -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal_LJ0_dual_head_detached -d arxiv -c 50 -p graph-uncertainty-v02
+credal_LJ0_dual_head_detached-patents    -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal_LJ0_dual_head_detached -d patents -c 50 -p graph-uncertainty-v02 --set deterministic=false
+credal_LJ0_dual_head_detached-amazon_ratings -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal_LJ0_dual_head_detached -d amazon_ratings -c 50 -p graph-uncertainty-v02
+credal_LJ0_dual_head_detached-roman_empire -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal_LJ0_dual_head_detached -d roman_empire -c 50 -p graph-uncertainty-v02
+credal_LJ0_dual_head_detached-coauthor   -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal_LJ0_dual_head_detached -d coauthor -c 50 -p graph-uncertainty-v02 --set deterministic=false
+credal_LJ0_dual_head_detached-reddit2    -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal_LJ0_dual_head_detached -d reddit2 -c 50 -p graph-uncertainty-v02
+credal_last_dual_head_detached-squirrel  -                            cpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal_last_dual_head_detached -d squirrel -c 50 -p graph-uncertainty-v02 --cpu
+credal_last_dual_head_detached-arxiv     -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal_last_dual_head_detached -d arxiv -c 50 -p graph-uncertainty-v02
+credal_last_dual_head_detached-patents   -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal_last_dual_head_detached -d patents -c 50 -p graph-uncertainty-v02 --set deterministic=false
+credal_last_dual_head_detached-amazon_ratings -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal_last_dual_head_detached -d amazon_ratings -c 50 -p graph-uncertainty-v02
+credal_last_dual_head_detached-roman_empire -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal_last_dual_head_detached -d roman_empire -c 50 -p graph-uncertainty-v02
+credal_last_dual_head_detached-coauthor  -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal_last_dual_head_detached -d coauthor -c 50 -p graph-uncertainty-v02 --set deterministic=false
+credal_last_dual_head_detached-reddit2   -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal_last_dual_head_detached -d reddit2 -c 50 -p graph-uncertainty-v02

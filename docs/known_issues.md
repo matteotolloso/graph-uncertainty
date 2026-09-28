@@ -89,6 +89,12 @@ vs 71.81). Report EU fixed a priori as the main number, or give every method the
 SAGEConv aggregates the raw 2089/2325-dim features over ~200K edges; with `deterministic=true` a
 Squirrel SAGE run peaked above 32 GB and went OOM on a 40 GB A100 (the legacy runs used 80 GB GPUs).
 Use `--cpu` (fast for these small graphs) or GCN.
+Patents: with `deterministic=true` the sort-based deterministic scatter runs out of memory in the
+full-graph validation forward on 40 GB GPUs (every architecture); with `deterministic=false` the peak is
+13–24 GB. Run Patents with `--set deterministic=false` (GPU results are then not bit-reproducible).
+Coauthor (6805 features): every SAGE configuration goes OOM with `deterministic=true`; fits with `false`.
+Related bug (fixed): after a crashed run the W&B agent kept the run's GPU tensors alive through the
+re-raised traceback, so every following run of that agent went OOM as well.
 
 ## M6 — Protocol points to state in the paper
 - Validation contains OOD nodes and is used for early stopping, sweeps, component (AU/EU) selection and

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+- `scripts/gpu_queue.py`: job queue with dependencies, at most 2 concurrent GPU jobs, resumable state;
+  `scripts/campaigns/v02.jobs`: re-run of the experiments affected by the audit (W&B `graph-uncertainty-v02`).
+- Sweep agents no longer leak GPU memory after a crashed run (the failure is logged, the run marked failed).
+- `cgnn results` skips runs tagged `superseded` in W&B.
+
 ## 0.2.0 — agent-ready refactor
 Verified equivalence: with `--set auroc_impl=torchmetrics split_seed=legacy` every one of the 20 legacy
 methods reproduces the legacy trainers' metrics exactly (Squirrel + ArXiv, CPU); all 9 dataset loaders

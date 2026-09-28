@@ -48,6 +48,25 @@ tail -n 50 outputs/logs/arxiv_vanilla.log ; nvidia-smi
 From Claude Code prefer `run_in_background` / Monitor over `sleep` loops. Report the sweep id and the
 log path to the user. Stop an agent with `kill <pid>` (only your own processes).
 
+## Many jobs: the queue
+`scripts/gpu_queue.py` runs a jobs file (`name needs gpu|cpu command` per line) with at most 2 concurrent
+GPU jobs (each pinned to one idle GPU), CPU slots, dependencies (e.g. post-hoc after `vanilla`), per-job
+logs and a resumable `state.json`. The file is re-read every poll: appended jobs, and edits to jobs that
+have not started yet (commands, `needs`), take effect without restarting the queue.
+```bash
+conda activate gu && mkdir -p outputs/logs
+nohup python scripts/gpu_queue.py scripts/campaigns/v02.jobs --log-dir outputs/logs/v02 \
+    > outputs/logs/v02_queue.log 2>&1 &
+cat outputs/logs/v02/state.json            # status per job; logs in outputs/logs/v02/<job>.log
+```
+- Stop gracefully with one `kill <queue pid>` (no new jobs), a second one terminates running jobs.
+  Restarting while jobs still run re-launches them (they are marked `interrupted`): wait for them first.
+- A sweep job exits 0 even if some of its runs crashed: grep its log for `Traceback`/`OutOfMemoryError`.
+- To redo a finished job, add it under a new name; tag the old sweep's runs `superseded` in W&B
+  (`cgnn results` skips them). Never delete runs.
+- Jobs `source scripts/campaigns/env.sh` to keep TMPDIR and W&B caches off the small root disk.
+- 40 GB GPUs: Patents and Coauthor need `--set deterministic=false` (known_issues M8).
+
 ## After
 - `cgnn results -d <ds> -m <method> --details` to check the new runs are picked up.
 - Local summaries: `outputs/runs/*.json` (config, metrics, data split, backbones) even without W&B.
