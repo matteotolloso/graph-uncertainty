@@ -47,7 +47,8 @@ cgnn/
 configs/defaults.yaml            global switches (seed, split_seed, auroc_impl, test_ckpt, devices...)
 configs/methods/<method>.yaml    per-method `defaults` (for `cgnn run`) + W&B `sweep`
 tests/           pytest suite (unit + end-to-end contract tests for every method)
-docs/            protocol.md, paper_to_code.md, known_issues.md, architecture.md
+docs/            protocol.md, paper_to_code.md, known_issues.md, architecture.md;
+                 status/ = ongoing work and handoff notes (READ FIRST when resuming: campaign_v02.md)
 scripts/         reproduce_paper.sh (ordered pipeline), run_all.sh (legacy notes)
 graph-ebm/       git submodule (GEBM baseline, `graph_uq`)
 dataset/ checkpoints/ wandb/ outputs/ graph-uncertainty/   LARGE ARTIFACTS - gitignored, never delete
