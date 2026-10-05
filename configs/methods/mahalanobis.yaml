@@ -1,0 +1,15 @@
+# Paper: Mahalanobis (post-hoc, top-1 vanilla backbone).
+#
+# defaults: used by `cgnn run` (and as the base config of every sweep run).
+# sweep:    W&B sweep definition; dataset metadata (in/out_channels, batch_size, num_neighbors) is merged in by `cgnn sweep`.
+defaults:
+  deterministic: false
+  noise_magnitude: 0.0
+sweep:
+  method: grid
+  metric:
+    name: val_auroc
+    goal: maximize
+  parameters:
+    noise_magnitude:
+      values: [0.0, 0.001, 0.005, 0.01, 0.05]

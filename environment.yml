@@ -1,0 +1,35 @@
+# Conda environment used for the experiments (named `gu`).
+#   conda env create -f environment.yml && conda activate gu
+#   pip install -e ".[dev]"                                   # the cgnn package + pytest/ruff
+#   git submodule update --init graph-ebm && pip install -e graph-ebm   # GEBM baseline (optional)
+# Versions below are the ones the experiments were run with.
+name: gu
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - --extra-index-url https://download.pytorch.org/whl/cu124
+      - --find-links https://data.pyg.org/whl/torch-2.6.0+cu124.html
+      - torch==2.6.0
+      - torch-geometric==2.7.0
+      - torch_scatter==2.1.2
+      - torch_sparse==0.6.18
+      - lightning==2.6.0
+      - torchmetrics==1.8.2
+      - wandb==0.28.0
+      - numpy==2.3.5
+      - scipy==1.17.0
+      - pyyaml==6.0.3
+      - fsspec==2025.12.0
+      - faiss-cpu==1.13.2
+      - ogb==1.3.6
+      - pandas==3.0.0
+      - matplotlib==3.11.0
+      - scikit-learn==1.8.0
+      # graph-ebm (graph_uq) extra requirements
+      - jaxtyping==0.3.11
+      - typeguard==2.13.3
+      - pytest==9.1.1
+      - ruff==0.16.9

@@ -1,0 +1,3 @@
+[submodule "graph-ebm"]
+	path = graph-ebm
+	url = https://github.com/dfuchsgruber/graph-ebm.git

@@ -1,0 +1,18 @@
+# --- large data & experiment artifacts: never commit ---------------------------
+dataset/
+checkpoints/
+outputs/
+wandb/
+graph-uncertainty/        # Lightning default checkpoint dirs (<project>/<run_id>/checkpoints)
+
+# --- python ---------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.venv/
+
+# --- local tooling ----------------------------------------------------------------
+.DS_Store

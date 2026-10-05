@@ -1,0 +1,49 @@
+"""Node splits and split fingerprints.
+
+Random splits (arxiv, patents, coauthor) are drawn from a *dedicated*
+``torch.Generator`` seeded with ``split_seed``, so every method sees the same
+split regardless of how much global RNG it consumed before loading data.
+
+``split_seed=None`` (default, the protocol used for the paper) draws the
+permutation from the *global* RNG right after model construction, so the split
+depends on the seed and on the architecture; post-hoc methods draw their own
+split in the same way, which can differ from their backbone's training split
+(``backbone_split_check`` reports this). An integer ``split_seed`` gives a
+split shared by every method.
+"""
+
+from __future__ import annotations
+
+import hashlib
+
+import numpy as np
+import torch
+
+
+def random_split_masks(
+    num_nodes: int, train_ratio: float, val_ratio: float, split_seed: int | None
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    if split_seed is None:
+        indices = torch.randperm(num_nodes)  # global RNG
+    else:
+        generator = torch.Generator().manual_seed(int(split_seed))
+        indices = torch.randperm(num_nodes, generator=generator)
+
+    train_size = int(train_ratio * num_nodes)
+    val_size = int(val_ratio * num_nodes)
+
+    train_mask = torch.zeros(num_nodes, dtype=torch.bool)
+    val_mask = torch.zeros(num_nodes, dtype=torch.bool)
+    test_mask = torch.zeros(num_nodes, dtype=torch.bool)
+    train_mask[indices[:train_size]] = True
+    val_mask[indices[train_size : train_size + val_size]] = True
+    test_mask[indices[train_size + val_size :]] = True
+    return train_mask, val_mask, test_mask
+
+
+def split_fingerprint(train_mask: torch.Tensor, val_mask: torch.Tensor, test_mask: torch.Tensor) -> str:
+    """Short, stable hash of the three node masks (stored in checkpoints)."""
+    h = hashlib.sha1()
+    for mask in (train_mask, val_mask, test_mask):
+        h.update(np.packbits(mask.detach().cpu().numpy().astype(np.uint8)).tobytes())
+    return h.hexdigest()[:12]

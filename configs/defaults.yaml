@@ -1,0 +1,31 @@
+# Global run configuration. Resolution order (later wins):
+#   configs/defaults.yaml  ->  configs/methods/<method>.yaml `defaults`
+#   ->  dataset metadata (in_channels, out_channels, batch_size, num_neighbors)
+#   ->  W&B sweep values / `cgnn run --set key=value`.
+# Every key below is logged to W&B with the run config. The defaults are the protocol used for the paper.
+
+# --- reproducibility ---------------------------------------------------------
+seed: 42                    # global RNG seed (seed_everything)
+split_seed: null            # random-split datasets (arxiv, patents, coauthor, synthetic).
+                            # null = split drawn from the global RNG after model construction (depends on
+                            # seed and architecture); an integer = split shared by every method.
+deterministic: true         # Lightning deterministic mode (post-hoc methods set it to false)
+
+# --- evaluation --------------------------------------------------------------
+auroc_impl: torchmetrics    # torchmetrics (sigmoid on scores outside [0,1]) | exact (rank-based on raw scores)
+min_entropy_method: greedy  # AU solver: greedy | multistart | exact | auto (see cgnn/uncertainty/entropy.py)
+test_ckpt: last             # weights used by `trainer.test` for trainable methods:
+                            # last (last epoch = best + patience) | best (best validation checkpoint)
+
+# --- hardware ------------------------------------------------------------------
+accelerator: auto           # auto | gpu | cpu
+devices: 1                  # GPUs per run; the runner refuses values > 2
+
+# --- checkpoints / backbones -------------------------------------------------
+save_checkpoint: true       # trainable methods save their best checkpoint under $CGNN_CKPT_DIR/<method>/
+backbone_split_check: warn  # post-hoc methods: error | warn | off when the backbone was trained on a
+                            # different split (checked via the split fingerprint stored in checkpoints)
+
+# --- training loop -----------------------------------------------------------
+early_stopping: true
+num_sanity_val_steps: 0

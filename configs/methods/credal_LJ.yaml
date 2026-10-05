@@ -1,0 +1,46 @@
+# Paper: CGNN only credal. Single credal head on the joint latent, trained end-to-end with the credal loss.
+#
+# defaults: used by `cgnn run` (and as the base config of every sweep run).
+# sweep:    W&B sweep definition; dataset metadata (in/out_channels, batch_size, num_neighbors) is merged in by `cgnn sweep`.
+defaults:
+  gnn_type: GCN
+  hidden_channels: 64
+  num_layers: 2
+  lr: 0.01
+  weight_decay: 0.0005
+  delta: 0.75
+  patience: 10
+  monitor: val_auroc_EU
+  mode: max
+sweep:
+  method: bayes
+  metric:
+    name: val_auroc_EU
+    goal: maximize
+  parameters:
+    lr:
+      distribution: uniform
+      min: 1.0e-05
+      max: 0.1
+    hidden_channels:
+      values: [64, 128]
+    num_layers:
+      values: [2, 3]
+    weight_decay:
+      distribution: uniform
+      min: 1.0e-07
+      max: 0.1
+    delta:
+      distribution: uniform
+      min: 0.5
+      max: 1.0
+    gnn_type:
+      values: [GCN, SAGE]
+    patience:
+      values: [10]
+    monitor:
+      values: [val_auroc_EU]
+    mode:
+      values: [max]
+    num_sanity_val_steps:
+      values: [0]

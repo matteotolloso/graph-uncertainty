@@ -1,0 +1,72 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cgnn"
+version = "1.0.0"
+description = "Credal Graph Neural Networks and uncertainty-quantification baselines for node-level OOD detection."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "torch>=2.2",
+    "torch_geometric>=2.5",
+    "lightning>=2.2",
+    "torchmetrics>=1.3",
+    "wandb>=0.16",
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+# Per-method / per-dataset extras. Everything is imported lazily, so the core
+# package works without them; `cgnn doctor` reports what is missing.
+knn = ["faiss-cpu>=1.7"]            # knn, knn_LJ (faiss-gpu also works)
+ogb = ["ogb>=1.3"]                  # arxiv dataset
+results = ["pandas>=2.0"]           # cgnn results
+# GEBM needs `graph_uq`: `git submodule update --init graph-ebm && pip install -e graph-ebm`
+dev = ["pytest>=7", "ruff>=0.4"]
+all = ["cgnn[knn,ogb,results,dev]"]
+
+[project.scripts]
+cgnn = "cgnn.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["cgnn*"]
+
+[tool.setuptools.package-data]
+cgnn = ["py.typed"]
+
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "slow: touches real datasets or GPUs (deselect with -m 'not slow')",
+    "golden: numerical regression tests against stored fixtures",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning",
+    "ignore::FutureWarning",
+]
+
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+extend-exclude = ["graph-ebm", "wandb", "dataset", "checkpoints", "graph-uncertainty", "outputs", "notebooks"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "NPY", "RUF"]
+ignore = [
+    "E501",    # long lines are handled by the formatter
+    "B008",    # function calls in defaults (Lightning/argparse idioms)
+    "RUF012",  # mutable class attrs used as registries
+    "UP007",   # keep Optional[...] where it reads better
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["cgnn"]
