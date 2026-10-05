@@ -112,6 +112,7 @@ class CaGCNModule(NodeUQModule):
         if id_labels.numel() > 0:
             self.log("test_acc", (id_preds == id_labels).float().mean())
             self.log("test_f1", self.f1(id_preds, id_labels))
+        self.log_test_extras({"": buf.cat("scores")}, buf.cat("targets"), id_preds, id_labels)
         buf.clear()
 
     def configure_optimizers(self):

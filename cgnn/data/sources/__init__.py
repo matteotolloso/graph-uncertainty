@@ -7,6 +7,7 @@ To add a dataset: create ``<name>.py`` here with a raw loader and a
 
 from cgnn.data.sources import (  # noqa: F401
     coauthor,
+    csbm,
     heterophilous,
     planetoid,
     reddit2,

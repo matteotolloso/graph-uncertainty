@@ -5,6 +5,21 @@
   `scripts/campaigns/v02.jobs`: re-run of the experiments affected by the audit (W&B `graph-uncertainty-v02`).
 - Sweep agents no longer leak GPU memory after a crashed run (the failure is logged, the run marked failed).
 - `cgnn results` skips runs tagged `superseded` in W&B.
+- KNN/JLDE: `knn_backend` switch (`faiss` default = legacy; `torch` = exact chunked search on the backbone
+  device, same scores, used for Patents on GPU).
+- Credal-set sanity checks (`cgnn/uncertainty/entropy.py`) tolerate float32 rounding of collapsed intervals
+  (`min(1e-3, max(1e-6, C^2 eps32))` instead of `1e-6`): fixes the `Sum of lower bounds for a node cannot exceed 1`
+  crashes of `credal_LJ0_dual_head_detached` at high lr. Inputs that passed before give identical values.
+- `scripts/campaigns/count_failed_runs.py` + top-up jobs in `v02.jobs` replacing the crashed sweep runs.
+- Extra test metrics for every method (new names, existing ones unchanged): AUPR/FPR@95 with OOD and with ID as
+  positive class, misclassification-detection AUROC, mean score on ID/OOD nodes (`NodeUQModule.log_test_extras`,
+  `cgnn.metrics.binary_aupr`/`fpr_at_tpr`; docs/protocol.md).
+- Training-label perturbations `train_fraction`, `label_noise`, `perturb_seed` (`cgnn/data/perturb.py`; defaults leave
+  data and split fingerprint unchanged) and synthetic contextual-SBM datasets `csbm_h1..h9` for the homophily study.
+- Test-time feature shift `test_feature_noise` / `test_shift_fraction` / `test_shift_seed` (default `[]` = off): extra
+  tests after the normal one, logged as `fshift_<sigma>_test_*` (clean vs feature-shifted ID test nodes;
+  docs/protocol.md). `test_*` metrics are unchanged; `cgnn results` treats the switches as non-hyper-parameters.
+- `cgnn run --sweep-project`: read `--from-sweep` from another W&B project than the one logged to.
 - `scripts/analysis/feature_sparsity.py` (node-feature sparsity per dataset, on top of `cgnn.data`); results in
   `docs/results/feature_sparsity/` (CSV, JSON, LaTeX).
 

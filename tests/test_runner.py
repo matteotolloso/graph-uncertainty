@@ -42,6 +42,16 @@ def _assert_contract(method: str, results: dict[str, float]) -> None:
         name = f"test_auroc_{key}" if key else "test_auroc"
         assert name in results, f"{method} did not log {name}"
         assert 0.0 <= results[name] <= 1.0
+        suffix = f"_{key}" if key else ""
+        for extra in (
+            "test_aupr",
+            "test_fpr95",
+            "test_auprin",
+            "test_fpr95in",
+            "test_misc_auroc",
+        ):  # log_test_extras
+            assert 0.0 <= results[f"{extra}{suffix}"] <= 1.0, f"{method} did not log {extra}{suffix}"
+        assert f"test_mean{suffix}_id" in results and f"test_mean{suffix}_ood" in results
 
 
 @pytest.mark.parametrize("method", TRAINABLE)
@@ -158,3 +168,68 @@ def test_gpu_smoke(tmp_paths):  # pragma: no cover - only with CUDA_VISIBLE_DEVI
         write_summary=False,
     )
     assert "test_auroc_EU" in results
+
+
+@pytest.mark.skipif(not has_module("faiss"), reason="faiss not installed")
+def test_knn_torch_backend_matches_faiss(backbone_paths):
+    import faiss
+    import numpy as np
+    import torch.nn.functional as F
+
+    from cgnn.models.detectors import KNNDetector
+
+    det = KNNDetector(
+        str(find_checkpoints("synthetic", paths=backbone_paths)[0].path), k=7, knn_backend="torch"
+    )
+    det.TORCH_CHUNK_ELEMENTS = 5 * 300  # several query chunks
+    g = torch.Generator().manual_seed(0)
+    train = F.normalize(torch.randn(300, 16, generator=g), dim=1)
+    query = F.normalize(torch.randn(101, 16, generator=g), dim=1)
+    det.train_emb = train
+    index = faiss.IndexFlatL2(16)
+    index.add(train.numpy().astype(np.float32))
+    expected = torch.from_numpy(index.search(query.numpy(), 7)[0][:, -1])
+    torch.testing.assert_close(det._kth_distance_torch(query), expected, atol=1e-5, rtol=0)
+
+
+@pytest.mark.skipif(not has_module("faiss"), reason="faiss not installed")
+@pytest.mark.parametrize("method", ["knn", "knn_LJ"])
+def test_knn_backends_give_same_auroc(method, backbone_paths):
+    out = {
+        backend: run_experiment(
+            method,
+            "synthetic",
+            {**FAST, "knn_backend": backend},
+            logger=False,
+            paths=backbone_paths,
+            write_summary=False,
+        )
+        for backend in ("faiss", "torch")
+    }
+    for key in ("val_auroc", "test_auroc"):
+        assert out["torch"][key] == pytest.approx(out["faiss"][key], abs=1e-6)
+
+
+@pytest.mark.parametrize("method", ["credal_LJ_dual_head_detached", "ensemble"])
+def test_feature_shift_tests_leave_normal_test_unchanged(method, backbone_paths):
+    cfg = {**FAST, **PER_METHOD.get(method, {}), "seed": 0}
+    plain = run_experiment(method, "synthetic", cfg, logger=False, run_id="fs0", paths=backbone_paths)
+    shift = run_experiment(
+        method,
+        "synthetic",
+        {**cfg, "test_feature_noise": [0, 4]},
+        logger=False,
+        run_id="fs1",
+        paths=backbone_paths,
+    )
+    for key, value in plain.items():  # the normal metrics are untouched
+        if key.startswith("test_"):
+            assert shift[key] == pytest.approx(value, nan_ok=True), key
+    keys = [k for k in get_method(method).score_keys]
+    for tag in ("fshift_0", "fshift_4"):
+        for key in keys:
+            name = f"{tag}_test_auroc_{key}" if key else f"{tag}_test_auroc"
+            assert 0.0 <= shift[name] <= 1.0, name
+    first = f"_{keys[0]}" if keys[0] else ""
+    assert f"fshift_4_test_mean{first}_ood" in shift and not any(k.startswith("fshift_0p") for k in shift)
+    assert not any(k.startswith("fshift_") and ("acc" in k or "misc" in k or "f1" in k) for k in shift)

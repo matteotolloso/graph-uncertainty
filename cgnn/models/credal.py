@@ -292,4 +292,10 @@ class CredalGNN(TrainableUQModule):
                 self.log(f"test_accuracy_{h}", (buf.cat(f"id_preds_{h}") == id_labels).float().mean())
             for h in heads:
                 self.log(f"test_f1_{h}", self.f1(buf.cat(f"id_preds_{h}"), id_labels))
+        self.log_test_extras(
+            {f"_{k}": buf.cat(k) for k in ("EU", "AU", "TU")},
+            targets,
+            buf.cat("id_preds_cls" if self.dual else "id_preds_U"),
+            id_labels,
+        )
         buf.clear()

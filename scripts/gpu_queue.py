@@ -92,6 +92,9 @@ class Queue:
         ours = {gpu for _, gpu in self.running.values() if gpu is not None}
         if len(ours) >= self.args.gpu_slots:
             return None
+        if self.args.pin_gpus:  # only these GPUs (ours, may already run our other jobs), least loaded first
+            load = {g: sum(1 for _, x in self.running.values() if x == g) for g in self.args.pin_gpus}
+            return min(self.args.pin_gpus, key=lambda g: (load[g], self.args.pin_gpus.index(g)))
         preferred = self.args.prefer or []
         idle = [g.index for g in query_gpus() if g.is_idle and g.index not in ours]
         idle.sort(key=lambda i: (i not in preferred, preferred.index(i) if i in preferred else i))
@@ -188,6 +191,13 @@ def main(argv=None) -> int:
     p.add_argument("--log-dir", default="outputs/logs/queue")
     p.add_argument("--gpu-slots", type=int, default=MAX_GPUS, help=f"concurrent GPU jobs (<= {MAX_GPUS})")
     p.add_argument("--prefer", type=int, nargs="*", help="preferred GPU indices, in order")
+    p.add_argument(
+        "--pin-gpus",
+        type=int,
+        nargs="*",
+        help="use only these GPUs even if not idle (e.g. one already running our other queue's job); "
+        "the GPU limit is then len(pin_gpus) plus whatever other queues use",
+    )
     p.add_argument("--cpu-slots", type=int, default=2)
     p.add_argument("--threads", type=int, default=16, help="OMP/MKL threads per job")
     p.add_argument("--poll", type=float, default=30.0, help="seconds between scheduling rounds")

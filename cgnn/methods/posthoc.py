@@ -80,7 +80,7 @@ _SPECS = [
     MethodSpec(
         "knn",
         "posthoc",
-        _detector("KNNDetector", "k"),
+        _detector("KNNDetector", "k", "knn_backend"),
         paper_name="KNN",
         description="Deep kNN distance on the penultimate embedding.",
         requires=("faiss",),
@@ -88,7 +88,7 @@ _SPECS = [
     MethodSpec(
         "knn_LJ",
         "posthoc",
-        _detector("KNNJointDetector", "k"),
+        _detector("KNNJointDetector", "k", "knn_backend"),
         paper_name="JLDE",
         description="kNN density on the joint latent (JLDE ablation).",
         requires=("faiss",),

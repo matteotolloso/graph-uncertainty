@@ -85,6 +85,15 @@ credal_LJ_dual_head_detached-patents     -                            gpu  sourc
 credal-patents                           -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal -d patents -c 50 -p graph-uncertainty-v02 --set deterministic=false
 credal_LJ-patents                        -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal_LJ -d patents -c 50 -p graph-uncertainty-v02 --set deterministic=false
 
+# --- Patents re-runs (added 2026-09-29). odin/mahalanobis-patents: every run with input perturbation OOMed on
+# the 40 GB GPU (full-graph input gradient) -> CPU, as the legacy scripts did. knn/knn_LJ-patents: CPU FAISS took
+# ~11 h per run (3-4 days per grid) -> exact torch search on GPU (knn_backend=torch, same scores; tests/test_runner.py).
+# The replaced sweeps must be tagged `superseded` in W&B once these finish.
+odin-patents-cpu                         vanilla-patents              cpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m odin -d patents -p graph-uncertainty-v02 --cpu --set deterministic=false
+mahalanobis-patents-cpu                  vanilla-patents              cpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m mahalanobis -d patents -p graph-uncertainty-v02 --cpu --set deterministic=false
+knn-patents-2                            vanilla-patents              gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m knn -d patents -p graph-uncertainty-v02 --set deterministic=false knn_backend=torch
+knn_LJ-patents-2                         vanilla-patents              gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m knn_LJ -d patents -p graph-uncertainty-v02 --set deterministic=false knn_backend=torch accelerator=gpu
+
 # --- M1/M2: CGNN with z^0 (paper Eq. 14) and the one-factor last-layer ablation, all datasets
 credal_LJ0_dual_head_detached-squirrel   -                            cpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal_LJ0_dual_head_detached -d squirrel -c 50 -p graph-uncertainty-v02 --cpu
 credal_LJ0_dual_head_detached-arxiv      -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal_LJ0_dual_head_detached -d arxiv -c 50 -p graph-uncertainty-v02
@@ -100,3 +109,11 @@ credal_last_dual_head_detached-amazon_ratings -                            gpu  
 credal_last_dual_head_detached-roman_empire -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal_last_dual_head_detached -d roman_empire -c 50 -p graph-uncertainty-v02
 credal_last_dual_head_detached-coauthor  -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal_last_dual_head_detached -d coauthor -c 50 -p graph-uncertainty-v02 --set deterministic=false
 credal_last_dual_head_detached-reddit2   -                            gpu  source scripts/campaigns/env.sh && CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal_last_dual_head_detached -d reddit2 -c 50 -p graph-uncertainty-v02
+
+# --- Top-ups (added 2026-09-30): runs that crashed with "Sum of lower bounds for a node cannot exceed 1" (float32
+# rounding of collapsed credal intervals at high lr; fixed in cgnn/uncertainty/entropy.py, known_issues M1) are
+# replaced by as many new runs of the same sweep, so every sweep ends with 50 finished runs. No-op if none failed.
+# (credal_last-patents started before the fix, hence listed too.)
+credal_LJ0_dual_head_detached-coauthor-topup  -                                    gpu  source scripts/campaigns/env.sh && n=$(python scripts/campaigns/count_failed_runs.py graph-uncertainty-v02 2pgfsje8) && if [ "$n" -gt 0 ]; then CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal_LJ0_dual_head_detached -d coauthor -p graph-uncertainty-v02 --sweep-id 2pgfsje8 -c "$n" --set deterministic=false; fi
+credal_LJ0_dual_head_detached-reddit2-topup   credal_LJ0_dual_head_detached-reddit2  gpu  source scripts/campaigns/env.sh && n=$(python scripts/campaigns/count_failed_runs.py graph-uncertainty-v02 696bd8ui) && if [ "$n" -gt 0 ]; then CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal_LJ0_dual_head_detached -d reddit2 -p graph-uncertainty-v02 --sweep-id 696bd8ui -c "$n"; fi
+credal_last_dual_head_detached-patents-topup  credal_last_dual_head_detached-patents gpu  source scripts/campaigns/env.sh && n=$(python scripts/campaigns/count_failed_runs.py graph-uncertainty-v02 w4htf29k) && if [ "$n" -gt 0 ]; then CGNN_CKPT_DIR=checkpoints/v02 cgnn sweep -m credal_last_dual_head_detached -d patents -p graph-uncertainty-v02 --sweep-id w4htf29k -c "$n" --set deterministic=false; fi

@@ -50,6 +50,21 @@ def _to_tensor(x, device=None) -> torch.Tensor:
     return torch.as_tensor(x, dtype=torch.float32, device=device)
 
 
+def _bounds_tolerance(num_classes: int, dtype: torch.dtype) -> float:
+    """Slack allowed in the credal-set sanity checks, for rounding only.
+
+    Reachable bounds add/subtract C probabilities, so when an interval collapses
+    to a point (``q_L == q_U``, e.g. saturated half-width sigmoids) their sums
+    miss 1 by up to ~C^2 ulp (~1e-5 for C=41 in float32). A fixed 1e-6 made such
+    runs crash; this only accepts inputs that used to raise (no value changes).
+    At least float32 precision: the heads output float32, and casting to float64 keeps their rounding.
+    """
+    eps = torch.finfo(torch.float32).eps
+    if dtype.is_floating_point:
+        eps = max(eps, torch.finfo(dtype).eps)
+    return min(1e-3, max(1e-6, num_classes * num_classes * eps))  # cap: half precision must not disable them
+
+
 def entropy(q: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     """Shannon entropy in bits along the last dimension."""
     q_clipped = q.clamp_min(eps)
@@ -157,13 +172,14 @@ def interval_entropy_bounds(lower_bound, upper_bound, min_entropy_method: str | 
 
     assert lower_bound.shape == upper_bound.shape, "Lower and upper bounds must have the same shape"
     assert len(lower_bound.shape) == 2, "Lower and upper bounds must be 2D arrays"
-    assert torch.all(lower_bound <= upper_bound + 1e-6), (
+    tol = _bounds_tolerance(lower_bound.size(1), lower_bound.dtype)
+    assert torch.all(lower_bound <= upper_bound + tol), (
         "Lower bounds must be less than or equal to upper bounds"
     )
-    assert torch.all(torch.sum(lower_bound, dim=1) <= 1.0 + 1e-6), (
+    assert torch.all(torch.sum(lower_bound, dim=1) <= 1.0 + tol), (
         "Sum of lower bounds for a node cannot exceed 1"
     )
-    assert torch.all(torch.sum(upper_bound, dim=1) >= 1.0 - 1e-6), (
+    assert torch.all(torch.sum(upper_bound, dim=1) >= 1.0 - tol), (
         "Sum of upper bounds for a node must be at least 1"
     )
 
@@ -201,11 +217,13 @@ def credal_uncertainties(q_L, q_U, min_entropy_method: str | None = None):
     q_L_star, q_U_star = reachable_bounds(q_L, q_U)
 
     if isinstance(q_L_star, torch.Tensor):
-        assert torch.all(q_L_star <= q_U_star + 1e-6), (
+        tol = _bounds_tolerance(q_L_star.shape[1], q_L_star.dtype)
+        assert torch.all(q_L_star <= q_U_star + tol), (
             "Lower bounds must be less than or equal to upper bounds"
         )
     else:
-        assert np.all(q_L_star <= q_U_star + 1e-6), "Lower bounds must be less than or equal to upper bounds"
+        tol = _bounds_tolerance(q_L_star.shape[1], torch.float32)  # ndarrays are converted to float32 below
+        assert np.all(q_L_star <= q_U_star + tol), "Lower bounds must be less than or equal to upper bounds"
 
     AU, TU = interval_entropy_bounds(q_L_star, q_U_star, min_entropy_method=min_entropy_method)
     EU = TU - AU

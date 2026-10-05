@@ -16,6 +16,7 @@ reads them): see ``.claude/rules/metrics-contract.md`` before renaming anything.
 
 from __future__ import annotations
 
+import warnings
 from collections import defaultdict
 
 import lightning as L
@@ -90,6 +91,45 @@ class NodeUQModule(L.LightningModule):
 
     def f1(self, preds: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
         return metrics.multiclass_f1(preds, labels, self.C)
+
+    def log_test_extras(
+        self,
+        scores: dict[str, torch.Tensor],
+        targets: torch.Tensor,
+        id_preds: torch.Tensor | None = None,
+        id_labels: torch.Tensor | None = None,
+    ) -> None:
+        """Extra test metrics for every uncertainty score (``{suffix: [N]}``, suffix as in ``test_auroc{suffix}``).
+
+        OOD detection: ``test_aupr*`` / ``test_fpr95*`` with OOD as the positive class (FPR = ID nodes
+        flagged at 95% OOD recall) and ``test_auprin*`` / ``test_fpr95in*`` with ID positive (the convention
+        of GNNSafe/GEBM: OOD nodes accepted at 95% ID recall); mean score on ID / OOD nodes
+        (``test_mean*_id``, ``test_mean*_ood``). Misclassification detection on ID nodes:
+        ``test_misc_auroc*`` (positive = wrong prediction). All exact, whatever ``auroc_impl`` is.
+        ``id_preds``/``id_labels`` must follow the order of the ID nodes (``targets == 0``) in ``scores``.
+        """
+        is_id = targets == 0
+        errors = None
+        if id_preds is not None and id_labels is not None:
+            if id_preds.numel() == int(is_id.sum()):
+                errors = (id_preds != id_labels).long()
+            else:
+                warnings.warn(
+                    f"{type(self).__name__}: {id_preds.numel()} ID predictions for {int(is_id.sum())} ID nodes; "
+                    "skipping test_misc_auroc",
+                    stacklevel=2,
+                )
+        for suffix, score in scores.items():
+            score = score.reshape(-1)
+            self.log(f"test_aupr{suffix}", metrics.binary_aupr(score, targets))
+            self.log(f"test_fpr95{suffix}", metrics.fpr_at_tpr(score, targets))
+            self.log(f"test_auprin{suffix}", metrics.binary_aupr(-score, 1 - targets))
+            self.log(f"test_fpr95in{suffix}", metrics.fpr_at_tpr(-score, 1 - targets))
+            self.log(f"test_mean{suffix}_id", score[is_id].float().mean())
+            self.log(f"test_mean{suffix}_ood", score[~is_id].float().mean())
+            if errors is not None and errors.numel() > 0:
+                misc = metrics.exact_binary_auroc(score[is_id.to(score.device)], errors).float()
+                self.log(f"test_misc_auroc{suffix}", misc)
 
     def buffer(self, stage: str) -> EpochBuffer:
         if stage not in self._buffers_by_stage:

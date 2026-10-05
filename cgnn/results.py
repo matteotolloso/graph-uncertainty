@@ -32,6 +32,8 @@ SUPERSEDED_TAG = "superseded"
 
 # Keys that identify a replicate rather than a hyper-parameter configuration.
 REPLICATE_KEYS = {"seed", "backbone_rank", "split_seed", "cgnn_version", "wandb_version", "_wandb"}
+# ... plus switches that only add extra test metrics (test_* unchanged)
+REPLICATE_KEYS |= {"test_feature_noise", "test_shift_fraction", "test_shift_seed"}
 
 # (row label, method key, candidate components) -- rows of paper Table 2, in order.
 PAPER_ROWS: list[tuple[str, str, tuple[str, ...]]] = [

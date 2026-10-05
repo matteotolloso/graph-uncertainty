@@ -4,7 +4,8 @@ Subclasses implement :meth:`PostHocDetector.ood_scores` (``[N]``, higher =
 more OOD, computed for *all* nodes of the batch) and optionally
 :meth:`prepare` (fit statistics on the training nodes of the full graph).
 
-Logged: ``val_auroc`` and ``test_auroc`` (epoch-level, exact AUROC).
+Logged: ``val_auroc`` and ``test_auroc`` (epoch-level, exact AUROC), plus the extra test metrics of
+``NodeUQModule.log_test_extras`` (misclassification detection uses the backbone's predictions).
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ import copy
 
 import torch
 
-from cgnn.models.base import NodeUQModule, ood_targets
+from cgnn.models.base import NodeUQModule, id_mask, ood_targets
 from cgnn.models.vanilla import VanillaGNN
 
 
@@ -58,10 +59,25 @@ class PostHocDetector(NodeUQModule):
         y = batch.y.to(scores.device)[mask]
         self.buffer(split).add(scores=scores[mask], targets=ood_targets(y))
 
+    @torch.no_grad()
+    def _collect_id_preds(self, batch) -> None:
+        """Backbone predictions on the ID test nodes, in buffer order (misclassification detection)."""
+        logits = self.backbone(shallow_to(batch, self.backbone_device)).detach()
+        mask = self.split_mask(batch, "test").to(logits.device)
+        y = batch.y.to(logits.device)[mask]
+        is_id = id_mask(y)
+        self.buffer("test").add(
+            id_labels=torch.argmax(y[is_id], dim=1), id_preds=torch.argmax(logits[mask][is_id], dim=1)
+        )
+
     def _log_auroc(self, split: str) -> None:
         buf = self.buffer(split)
         if buf:
             self.log(f"{split}_auroc", self.auroc(buf.cat("scores"), buf.cat("targets")), prog_bar=True)
+            if split == "test":
+                id_preds = buf.cat("id_preds") if "id_preds" in buf else None
+                id_labels = buf.cat("id_labels") if "id_labels" in buf else None
+                self.log_test_extras({"": buf.cat("scores")}, buf.cat("targets"), id_preds, id_labels)
         buf.clear()
 
     def on_validation_epoch_start(self):
@@ -78,6 +94,7 @@ class PostHocDetector(NodeUQModule):
 
     def test_step(self, batch, batch_idx):
         self._collect(batch, "test")
+        self._collect_id_preds(batch)
 
     def on_test_epoch_end(self):
         self._log_auroc("test")

@@ -11,6 +11,16 @@ split_seed: 0               # random-split datasets (arxiv, patents, coauthor, s
                             # init: architecture-dependent, NOT shared with post-hoc methods).
 deterministic: true         # Lightning deterministic mode (post-hoc methods override to false, legacy)
 
+# --- training-label perturbations (cgnn/data/perturb.py; defaults = unchanged data) --------
+train_fraction: 1.0         # keep this fraction of the ID training nodes (fewer labels -> more epistemic unc.)
+label_noise: 0.0            # fraction of training labels replaced by a random other ID class (-> aleatoric unc.)
+perturb_seed: 0             # seed of both draws
+# test-time feature shift (cgnn/data/perturb.py::shift_test_features; [] = off). Extra tests after the normal
+# one, logged as fshift_<sigma>_test_* (clean vs shifted ID test nodes); never used for selection.
+test_feature_noise: []      # noise levels sigma, in units of the per-feature training std, e.g. [0, 0.5, 1, 2]
+test_shift_fraction: 0.5    # fraction of the ID test nodes that get the noise
+test_shift_seed: 0          # seed of the shifted nodes and of the noise direction
+
 # --- evaluation --------------------------------------------------------------
 auroc_impl: exact           # exact (rank-based, default) | torchmetrics (legacy: saturates scores
                             # outside [0,1] into ties -> wrong AUROC for Mahalanobis/Energy/GEBM)

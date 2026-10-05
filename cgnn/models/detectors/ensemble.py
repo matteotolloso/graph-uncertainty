@@ -14,7 +14,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from cgnn.models.base import NodeUQModule, ood_targets
+from cgnn.models.base import NodeUQModule, id_mask, ood_targets
 from cgnn.models.detectors.base import load_frozen_backbone
 from cgnn.uncertainty.ensemble import ensemble_uncertainties
 
@@ -37,7 +37,13 @@ class CredalEnsemble(NodeUQModule):
     def _collect(self, batch, split: str) -> None:
         mask = self.split_mask(batch, split)
         stacked = self(batch)[:, mask, :].detach()
-        self.buffer(split).add(targets=ood_targets(batch.y[mask]), **ensemble_uncertainties(stacked))
+        y = batch.y[mask]
+        self.buffer(split).add(targets=ood_targets(y), **ensemble_uncertainties(stacked))
+        if split == "test":
+            is_id = id_mask(y)
+            self.buffer(split).add(
+                id_labels=torch.argmax(y[is_id], dim=1), id_preds=torch.argmax(stacked.mean(0)[is_id], dim=1)
+            )
 
     def _log(self, split: str) -> None:
         buf = self.buffer(split)
@@ -49,6 +55,9 @@ class CredalEnsemble(NodeUQModule):
                     self.auroc(buf.cat(key), targets),
                     prog_bar=split == "val" and key == "EU_credal",
                 )
+            if split == "test":
+                scores = {f"_{key}": buf.cat(key) for key in _KEYS}
+                self.log_test_extras(scores, targets, buf.cat("id_preds"), buf.cat("id_labels"))
         buf.clear()
 
     def on_validation_epoch_start(self):

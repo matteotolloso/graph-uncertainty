@@ -165,6 +165,9 @@ class CredalFrozenJoint(NodeUQModule):
             self.log("test_accuracy_L", (buf.cat("id_preds_L") == id_labels).float().mean())
             self.log("test_f1_U", self.f1(buf.cat("id_preds_U"), id_labels))
             self.log("test_f1_L", self.f1(buf.cat("id_preds_L"), id_labels))
+        self.log_test_extras(
+            {f"_{k}": buf.cat(k) for k in ("EU", "AU", "TU")}, targets, buf.cat("id_preds_U"), id_labels
+        )
         buf.clear()
 
     def configure_optimizers(self):

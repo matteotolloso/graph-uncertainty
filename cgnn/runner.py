@@ -6,6 +6,7 @@ consumption so seeded runs match the pre-0.2 code):
 trainable:  resolve cfg -> seed -> build model -> trainer -> load data -> fit -> test
 post-hoc:   resolve cfg -> seed -> select backbones -> build -> load data
             -> split check -> prepare(train graph) -> [fit on train|val] / validate -> test
+both:       [-> extra tests under a test-time feature shift, if ``test_feature_noise`` is set]
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from cgnn import __version__, metrics
 from cgnn.checkpoints import check_backbone_split, checkpoint_filename, select_backbones
 from cgnn.config import resolve_config
 from cgnn.data import GraphBundle, get_dataset, load_dataset
+from cgnn.data.perturb import shift_test_features
 from cgnn.methods import MethodSpec, RunContext, get_method
 from cgnn.paths import Paths
 from cgnn.uncertainty.entropy import set_min_entropy_method
@@ -105,6 +107,54 @@ def _test_ckpt(ctx: RunContext) -> str | None:
     return None if choice == "last" else "best"
 
 
+_SHIFT_METRICS = ("test_auroc", "test_aupr", "test_fpr95", "test_mean")  # also test_auprin*, test_fpr95in*
+
+
+def _feature_shift_tests(
+    ctx: RunContext,
+    model,
+    bundle: GraphBundle,
+    logger,
+    results: dict[str, float],
+    *,
+    inference_mode: bool = True,
+) -> None:
+    """Re-test the trained model under each ``test_feature_noise`` level (``cgnn.data.perturb.shift_test_features``).
+
+    Runs after the normal test, whose metrics are unchanged; these are logged as ``fshift_<sigma>_test_*``
+    (``0.5`` -> ``fshift_0p5_``) and are never used for any selection. Only the detection metrics are kept
+    (AUROC/AUPR/FPR95/mean score): the shifted nodes are relabelled as positives, so accuracy-type metrics
+    would only cover the clean nodes.
+    """
+    cfg = ctx.cfg
+    levels = cfg.get("test_feature_noise") or []
+    if isinstance(levels, (int, float)):
+        levels = [levels]
+    if not levels:
+        return
+    trainer = _trainer(
+        ctx, None, callbacks=[], inference_mode=inference_mode
+    )  # no logger: keep test_* intact
+    for sigma in levels:
+        shifted = shift_test_features(
+            bundle.data,
+            float(sigma),
+            fraction=float(cfg.get("test_shift_fraction", 0.5)),
+            seed=int(cfg.get("test_shift_seed", 0)),
+        )
+        torch.manual_seed(int(cfg.get("test_shift_seed", 0)))  # same neighbour sampling at every sigma
+        trainer.test(model, bundle.test_loader_for(shifted))
+        level: dict[str, float] = {}
+        _collect(trainer, level)
+        tag = f"fshift_{float(sigma):g}".replace(".", "p")
+        level = {f"{tag}_{k}": v for k, v in level.items() if k.startswith(_SHIFT_METRICS)}
+        results.update(level)
+        if logger:
+            logger.log_metrics(level)
+    if logger:
+        logger.save()
+
+
 def run_trainable(ctx: RunContext, logger) -> tuple[dict[str, float], GraphBundle]:
     model = ctx.method.build(ctx)
     trainer = _trainer(ctx, logger, callbacks=_callbacks(ctx))
@@ -116,6 +166,7 @@ def run_trainable(ctx: RunContext, logger) -> tuple[dict[str, float], GraphBundl
     _collect(trainer, results)
     trainer.test(model, bundle.test_loader, ckpt_path=_test_ckpt(ctx))
     _collect(trainer, results)
+    _feature_shift_tests(ctx, model, bundle, logger, results)
     return results, bundle
 
 
@@ -148,6 +199,7 @@ def run_posthoc(ctx: RunContext, logger) -> tuple[dict[str, float], GraphBundle]
         model.prepare(bundle.data)
 
     results: dict[str, float] = {}
+    needs_grad = getattr(model, "needs_input_grad", False)
     if spec.fit_on is not None:
         trainer = _trainer(ctx, logger, callbacks=_callbacks(ctx))
         fit_loader = bundle.train_loader if spec.fit_on == "train" else bundle.val_loader
@@ -155,12 +207,12 @@ def run_posthoc(ctx: RunContext, logger) -> tuple[dict[str, float], GraphBundle]
         _collect(trainer, results)
         trainer.test(model, dataloaders=bundle.test_loader, ckpt_path=_test_ckpt(ctx))
     else:
-        needs_grad = getattr(model, "needs_input_grad", False)
         trainer = _trainer(ctx, logger, callbacks=[], inference_mode=not needs_grad)
         trainer.validate(model, bundle.val_loader)
         _collect(trainer, results)
         trainer.test(model, bundle.test_loader)
     _collect(trainer, results)
+    _feature_shift_tests(ctx, model, bundle, logger, results, inference_mode=not needs_grad)
     return results, bundle
 
 

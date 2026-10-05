@@ -135,4 +135,5 @@ class VanillaGNN(TrainableUQModule):
         if id_labels.numel() > 0:
             self.log("test_acc", (id_preds == id_labels).float().mean())
             self.log("test_f1", self.f1(id_preds, id_labels))
+        self.log_test_extras({"": buf.cat("ood_scores")}, buf.cat("ood_targets"), id_preds, id_labels)
         buf.clear()

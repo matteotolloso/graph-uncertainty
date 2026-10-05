@@ -39,9 +39,16 @@ def random_split_masks(
     return train_mask, val_mask, test_mask
 
 
-def split_fingerprint(train_mask: torch.Tensor, val_mask: torch.Tensor, test_mask: torch.Tensor) -> str:
-    """Short, stable hash of the three node masks (stored in checkpoints)."""
+def split_fingerprint(
+    train_mask: torch.Tensor, val_mask: torch.Tensor, test_mask: torch.Tensor, tag: str = ""
+) -> str:
+    """Short, stable hash of the three node masks (stored in checkpoints).
+
+    ``tag`` describes training-label perturbations (``cgnn.data.perturb``); empty = legacy hash.
+    """
     h = hashlib.sha1()
     for mask in (train_mask, val_mask, test_mask):
         h.update(np.packbits(mask.detach().cpu().numpy().astype(np.uint8)).tobytes())
+    if tag:
+        h.update(tag.encode())
     return h.hexdigest()[:12]

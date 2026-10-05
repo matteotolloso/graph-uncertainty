@@ -157,7 +157,7 @@ def cmd_run(args) -> int:
 
     overrides = {}
     if args.from_sweep:
-        overrides.update(fetch_best_config(args.from_sweep, args.project, args.entity))
+        overrides.update(fetch_best_config(args.from_sweep, args.sweep_project or args.project, args.entity))
     overrides.update(parse_overrides(args.set))
     if args.cpu:
         overrides["accelerator"] = "cpu"
@@ -406,6 +406,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--seeds", nargs="*", type=int, help="repeat the run for these global seeds")
     s.add_argument("--repeat", help="repeat over KEY=v1,v2,... (e.g. backbone_rank=0,1,2,3,4)")
     s.add_argument("--from-sweep", help="start from the best config of this W&B sweep id")
+    s.add_argument("--sweep-project", help="W&B project of --from-sweep (default: --project)")
     s.add_argument(
         "--wandb",
         default="auto",

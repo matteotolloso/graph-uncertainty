@@ -20,7 +20,7 @@ from cgnn.uncertainty import (
     probs_cross_entropy,
     reachable_bounds,
 )
-from cgnn.uncertainty.entropy import set_min_entropy_method
+from cgnn.uncertainty.entropy import interval_entropy_bounds, set_min_entropy_method
 
 
 def _intervals(n=400, C=4, scale=2.0, seed=0):
@@ -124,6 +124,28 @@ def test_credal_uncertainties_properties_and_numpy_parity():
     assert torch.all(EU >= -1e-6) and torch.allclose(TU - AU, EU)
     TUn, _, EUn = credal_uncertainties(q_L.numpy(), q_U.numpy())
     assert np.allclose(TUn, TU.cpu().numpy(), atol=1e-5) and np.allclose(EUn, EU.cpu().numpy(), atol=1e-5)
+
+
+@pytest.mark.parametrize("C", [11, 41])
+def test_collapsed_intervals_do_not_trip_the_sanity_checks(C):
+    # Saturated half-width sigmoids give q_L == q_U; float32 rounding of the reachable bounds then pushed
+    # sum(q_L*) past 1 + 1e-6 and crashed training (known_issues: LJ0 "Sum of lower bounds" crash).
+    m = torch.sigmoid(3 * torch.randn(20000, C, generator=torch.Generator().manual_seed(0)))
+    q_L, q_U = interval_softmax(m, m)
+    assert (reachable_bounds(q_L, q_U)[0].sum(1) > 1 + 1e-6).any()  # the old tolerance would raise
+    TU, _, EU = credal_uncertainties(q_L, q_U)
+    assert torch.allclose(TU, entropy(torch.softmax(m, 1)), atol=1e-4) and EU.abs().max() < 1e-4
+    credal_uncertainties(q_L.double(), q_U.double())  # float32 outputs cast to float64 keep their rounding
+
+
+def test_credal_sanity_checks_still_reject_invalid_intervals():
+    lo, u = torch.full((2, 4), 0.3), torch.full((2, 4), 0.5)  # sum of lower bounds 1.2
+    with pytest.raises(AssertionError, match="Sum of lower bounds"):
+        interval_entropy_bounds(lo, u)
+    with pytest.raises(AssertionError, match="Lower bounds must be"):
+        credal_uncertainties(lo, u)
+    with pytest.raises(AssertionError, match="Sum of upper bounds"):
+        interval_entropy_bounds(torch.full((2, 4), 0.1), torch.full((2, 4), 0.2))  # sum of upper bounds 0.8
 
 
 def test_credal_loss_formula():

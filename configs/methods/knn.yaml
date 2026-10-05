@@ -5,6 +5,7 @@
 defaults:
   deterministic: false  # legacy post-hoc testers did not set it
   k: 50
+  knn_backend: faiss  # legacy; 'torch' = exact GPU/CPU brute force (same scores, far faster on Patents)
 sweep:
   method: grid
   metric:

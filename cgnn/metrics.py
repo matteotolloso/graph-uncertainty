@@ -11,6 +11,8 @@ into ties and drives the AUROC towards 0.5 (docs/known_issues.md).
 The legacy behaviour is available with ``set_auroc_impl("torchmetrics")``
 (config key ``auroc_impl``) to reproduce pre-0.2 numbers.
 
+Also ``binary_aupr`` (average precision, OOD positive) and ``fpr_at_tpr`` (FPR@95%TPR), always exact.
+
 Conventions: ``targets`` are 1 for OOD, 0 for ID; higher score = more OOD.
 """
 
@@ -63,6 +65,39 @@ def binary_auroc(scores: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
     if _AUROC_IMPL == "torchmetrics":
         return _tm_binary_auroc(scores, targets.long())
     return exact_binary_auroc(scores, targets).to(torch.float32)
+
+
+def _threshold_counts(scores: torch.Tensor, targets: torch.Tensor):
+    """Cumulative TP/FP at every distinct threshold, scores descending (ties grouped, as sklearn)."""
+    scores = scores.detach().reshape(-1).to(torch.float64)
+    positives = (targets.detach().reshape(-1).to(scores.device) > 0).to(torch.float64)
+    order = torch.argsort(scores, descending=True, stable=True)
+    scores, positives = scores[order], positives[order]
+    last_of_group = torch.ones_like(scores, dtype=torch.bool)
+    last_of_group[:-1] = scores[1:] != scores[:-1]
+    tp = torch.cumsum(positives, 0)[last_of_group]
+    fp = torch.cumsum(1 - positives, 0)[last_of_group]
+    return tp, fp
+
+
+def binary_aupr(scores: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+    """Average precision with OOD (``targets == 1``) as the positive class (= sklearn's AP)."""
+    tp, fp = _threshold_counts(scores, targets)
+    if tp.numel() == 0 or tp[-1] == 0:
+        return torch.tensor(float("nan"))
+    precision = tp / (tp + fp)
+    recall = tp / tp[-1]
+    recall_prev = torch.cat([recall.new_zeros(1), recall[:-1]])
+    return ((recall - recall_prev) * precision).sum().to(torch.float32)
+
+
+def fpr_at_tpr(scores: torch.Tensor, targets: torch.Tensor, tpr: float = 0.95) -> torch.Tensor:
+    """FPR at the first threshold whose TPR (OOD recall) reaches ``tpr`` (lower is better)."""
+    tp, fp = _threshold_counts(scores, targets)
+    if tp.numel() == 0 or tp[-1] == 0 or fp[-1] == 0:
+        return torch.tensor(float("nan"))
+    reached = torch.nonzero(tp / tp[-1] >= tpr - 1e-12)[0, 0]
+    return (fp[reached] / fp[-1]).to(torch.float32)
 
 
 def multiclass_f1(preds: torch.Tensor, labels: torch.Tensor, num_classes: int) -> torch.Tensor:

@@ -10,14 +10,15 @@ Typical use::
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from torch_geometric.data import Data
 
 import cgnn.data.sources  # noqa: F401  (registers all datasets)
-from cgnn.data.loaders import build_loaders
+from cgnn.data.loaders import build_loaders, full_batch_loader, neighbor_loader
 from cgnn.data.ood import apply_leave_out_classes, split_summary
+from cgnn.data.perturb import perturb_training_labels
 from cgnn.data.spec import DATASETS, DatasetSpec, RawGraph, register_dataset
 from cgnn.data.splits import random_split_masks, split_fingerprint
 from cgnn.paths import Paths
@@ -48,6 +49,16 @@ class GraphBundle:
     test_loader: Any
     split_seed: int | None
     fingerprint: str
+    loader_kwargs: dict[str, Any] = field(default_factory=dict)
+
+    def test_loader_for(self, data: Data):
+        """Test loader over another version of the graph (same batching as ``test_loader``)."""
+        kw = self.loader_kwargs
+        if kw["batch_size"] > 0 and kw["eval_neighbor_sampling"]:
+            return neighbor_loader(
+                data, "test", kw["batch_size"], kw["num_neighbors"], kw["num_layers"], False
+            )
+        return full_batch_loader(data)
 
     def summary(self) -> dict[str, Any]:
         return {
@@ -94,7 +105,8 @@ def load_dataset(
     """Load a dataset with the leave-out-class OOD split and build its loaders.
 
     Config keys read: ``split_seed`` (random-split datasets only), ``batch_size``,
-    ``num_neighbors``, ``num_layers`` (NeighborLoader depth), ``eval_neighbor_sampling``.
+    ``num_neighbors``, ``num_layers`` (NeighborLoader depth), ``eval_neighbor_sampling``,
+    ``train_fraction`` / ``label_noise`` / ``perturb_seed`` (``cgnn.data.perturb``).
     """
     cfg = dict(cfg or {})
     spec = get_dataset(name)
@@ -117,18 +129,20 @@ def load_dataset(
         raw.x, raw.edge_index, raw.y, base_train, base_val, base_test, spec.id_classes, spec.ood_classes
     )
 
+    perturbation = perturb_training_labels(data, cfg)
+
     batch_size = int(cfg.get("batch_size", spec.batch_size))
     eval_sampling = (
         bool(cfg.get("eval_neighbor_sampling", spec.eval_neighbor_sampling)) and not force_full_batch_eval
     )
     layers = int(cfg.get("num_layers", num_layers if num_layers is not None else 2))
-    train_loader, val_loader, test_loader = build_loaders(
-        data,
-        batch_size=batch_size,
-        num_neighbors=int(cfg.get("num_neighbors", spec.num_neighbors)),
-        num_layers=layers,
-        eval_neighbor_sampling=eval_sampling,
-    )
+    loader_kwargs = {
+        "batch_size": batch_size,
+        "num_neighbors": int(cfg.get("num_neighbors", spec.num_neighbors)),
+        "num_layers": layers,
+        "eval_neighbor_sampling": eval_sampling,
+    }
+    train_loader, val_loader, test_loader = build_loaders(data, **loader_kwargs)
 
     bundle = GraphBundle(
         spec=spec,
@@ -137,7 +151,8 @@ def load_dataset(
         val_loader=val_loader,
         test_loader=test_loader,
         split_seed=split_seed,
-        fingerprint=split_fingerprint(data.train_mask, data.val_mask, data.test_mask),
+        fingerprint=split_fingerprint(data.train_mask, data.val_mask, data.test_mask, tag=perturbation),
+        loader_kwargs=loader_kwargs,
     )
     s = bundle.summary()
     print(

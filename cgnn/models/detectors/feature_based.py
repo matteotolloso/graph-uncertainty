@@ -85,30 +85,66 @@ class MahalanobisDetector(PostHocDetector):
 
 class _FaissKNN(PostHocDetector):
     """Deep-kNN detector (Sun et al. 2022): score = squared L2 distance to the
-    k-th nearest *training* embedding (L2-normalised, FAISS flat index)."""
+    k-th nearest *training* embedding (L2-normalised, exact search).
 
-    def __init__(self, backbone_ckpt_path: str, k: int = 50):
+    ``knn_backend``: ``faiss`` (legacy, CPU ``IndexFlatL2``) or ``torch`` (exact
+    brute-force search in chunks on the backbone device; same distances up to
+    float rounding, minutes instead of hours on Patents with a GPU)."""
+
+    KNN_BACKENDS = ("faiss", "torch")
+    TORCH_CHUNK_ELEMENTS = 1 << 28  # query-chunk x train distance matrix (1 GiB fp32; peak ~2 GiB)
+
+    def __init__(self, backbone_ckpt_path: str, k: int = 50, knn_backend: str = "faiss"):
         super().__init__(backbone_ckpt_path)
+        if knn_backend not in self.KNN_BACKENDS:
+            raise ValueError(f"knn_backend must be one of {self.KNN_BACKENDS}, got {knn_backend!r}")
         self.k = int(k)
+        self.knn_backend = knn_backend
         self.faiss_index = None
+        self.train_emb = None
 
     def embed(self, data) -> torch.Tensor:
         raise NotImplementedError
 
     def prepare(self, train_data) -> None:
-        import faiss
-
         data = shallow_to(train_data, self.backbone_device)
         with torch.no_grad():
             train_emb = F.normalize(self.embed(data)[data.train_mask], p=2, dim=1)
+        if self.knn_backend == "torch":
+            self.train_emb = train_emb.detach().float().contiguous()
+            return
+        import faiss
+
         self.faiss_index = faiss.IndexFlatL2(train_emb.size(1))
         self.faiss_index.add(train_emb.detach().cpu().numpy().astype(np.float32))
 
+    def _kth_distance_torch(self, emb: torch.Tensor) -> torch.Tensor:
+        train = self.train_emb.to(emb.device)
+        k = min(self.k, train.size(0))
+        train_sq = (train * train).sum(dim=1)
+        rows = max(1, self.TORCH_CHUNK_ELEMENTS // max(train.size(0), 1))
+        out = torch.empty(emb.size(0), device=emb.device)
+        tf32 = torch.backends.cuda.matmul.allow_tf32
+        torch.backends.cuda.matmul.allow_tf32 = False  # full fp32 distances, as FAISS
+        try:
+            for start in range(0, emb.size(0), rows):
+                q = emb[start : start + rows]
+                d = torch.addmm(train_sq.unsqueeze(0), q, train.T, alpha=-2.0)
+                d += (q * q).sum(dim=1, keepdim=True)
+                out[start : start + rows] = d.topk(k, dim=1, largest=False).values[:, -1].clamp_min_(0.0)
+        finally:
+            torch.backends.cuda.matmul.allow_tf32 = tf32
+        return out
+
     def ood_scores(self, data) -> torch.Tensor:
-        if self.faiss_index is None:
-            raise RuntimeError("FAISS index not built. Call prepare(train_data) first.")
         with torch.no_grad():
             emb = F.normalize(self.embed(data.to(self.backbone_device)), p=2, dim=1)
+            if self.knn_backend == "torch":
+                if self.train_emb is None:
+                    raise RuntimeError("Training embeddings not stored. Call prepare(train_data) first.")
+                return self._kth_distance_torch(emb.float())
+        if self.faiss_index is None:
+            raise RuntimeError("FAISS index not built. Call prepare(train_data) first.")
         distances, _ = self.faiss_index.search(emb.detach().cpu().numpy().astype(np.float32), self.k)
         return torch.from_numpy(distances[:, -1]).float()
 
@@ -116,8 +152,8 @@ class _FaissKNN(PostHocDetector):
 class KNNDetector(_FaissKNN):
     """kNN on the second-to-last backbone layer (after activation)."""
 
-    def __init__(self, backbone_ckpt_path: str, k: int = 50):
-        super().__init__(backbone_ckpt_path, k)
+    def __init__(self, backbone_ckpt_path: str, k: int = 50, knn_backend: str = "faiss"):
+        super().__init__(backbone_ckpt_path, k, knn_backend)
         self.save_hyperparameters()
 
     def embed(self, data) -> torch.Tensor:
@@ -134,8 +170,8 @@ class KNNJointDetector(_FaissKNN):
     """JLDE ablation (Fuchsgruber et al. 2025): kNN density on the joint latent
     ``[x || act(z^1) || ... || z^L]`` of the frozen backbone."""
 
-    def __init__(self, backbone_ckpt_path: str, k: int = 50):
-        super().__init__(backbone_ckpt_path, k)
+    def __init__(self, backbone_ckpt_path: str, k: int = 50, knn_backend: str = "faiss"):
+        super().__init__(backbone_ckpt_path, k, knn_backend)
         self.save_hyperparameters()
 
     def embed(self, data) -> torch.Tensor:

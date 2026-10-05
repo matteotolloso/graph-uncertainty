@@ -45,6 +45,25 @@ only `z^1..z^L` (with the activation also applied after the last layer). `frozen
 `gebm` *do* include `z^0`. New method `credal_LJ0_dual_head_detached` implements Eq. 14 exactly
 (`joint_include_input=True`). Either fix the paper text or re-run.
 
+Collapse with z^0 (v0.2 campaign): with the raw features in the latent the credal head's input is much wider
+(Coauthor 6869 vs 128, Reddit2 730 vs 128), so at high learning rates (lr >= 0.005 in the sweeps) Adam steps can
+saturate the half-width sigmoids and shrink every interval towards a point. Once a node's width reaches float32
+rounding (`q_L == q_U`), the reachable bounds no longer sum to 1 exactly and the old fixed `1e-6` sanity check
+raised `AssertionError: Sum of lower bounds for a node cannot exceed 1` (4 runs: Coauthor 1/50 at epoch 0 with a
+dead head, Reddit2 3 runs at epochs 20-38). Since 2026-09-30 the checks allow `min(1e-3, max(1e-6, C^2 eps32))`
+of rounding slack: inputs that passed before give identical values; the crashed runs are replaced by top-up runs
+of the same sweeps (`scripts/campaigns/v02.jobs`).
+Measured (scratch analysis, val nodes): (i) a fully dead head (Coauthor) gives identical outputs for every node,
+so EU AUROC = 0.50 exactly; (ii) on the Reddit2 crash config, after collapse (all widths < 2e-4, up to 20% of
+nodes <= 1e-6) AUROC(EU) in float32 and float64 differ by <= 0.006 and EU follows the width (Spearman 0.8-1.0):
+the signal comes from the tiny intervals, not from rounding; (iii) none of the top-5 checkpoints of CGNN / LJ0 /
+last-layer-dual in `graph-uncertainty-v02` has a node with width <= 1e-6, and float32 vs float64 EU AUROC agree
+within 0.002. Caveat: some selected runs are *nearly* collapsed (median width 2e-5..1e-4: Patents LJ0 and
+last-layer-dual, Amazon LJ0, one Reddit2 LJ0). Their EU is numerically sound but the credal sets are
+practically points; worth stating if these ablations are reported. With exactly zero widths EU would be pure
+rounding noise that correlates with the softmax entropy (synthetic AUROC up to ~0.8), so a run with such
+intervals must not be trusted.
+
 ## M2 — "CGNN last layer" ablation changes two factors
 `credal` = single credal head, end-to-end credal loss, last layer. Compared with CGNN it removes both the
 joint latent and the dual (detached) head. The one-factor ablation is `credal_last_dual_head_detached`.
@@ -93,6 +112,11 @@ Patents: with `deterministic=true` the sort-based deterministic scatter runs out
 full-graph validation forward on 40 GB GPUs (every architecture); with `deterministic=false` the peak is
 13–24 GB. Run Patents with `--set deterministic=false` (GPU results are then not bit-reproducible).
 Coauthor (6805 features): every SAGE configuration goes OOM with `deterministic=true`; fits with `false`.
+Patents ODIN/Mahalanobis with `noise_magnitude > 0`: the input-gradient pass over the full graph goes OOM on
+40 GB GPUs (every run; the sweep job still exits 0). Run them with `--cpu`, as the legacy scripts did.
+Patents KNN/JLDE: the CPU FAISS flat search (~2.9M queries x ~1.05M train embeddings) takes ~11 h per run.
+`--set knn_backend=torch` does the same exact search in chunks on the backbone device (GPU: minutes); the
+scores match FAISS up to float rounding (`tests/test_runner.py::test_knn_*`). Default stays `faiss`.
 Related bug (fixed): after a crashed run the W&B agent kept the run's GPU tensors alive through the
 re-raised traceback, so every following run of that agent went OOM as well.
 

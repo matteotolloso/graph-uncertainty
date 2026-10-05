@@ -248,6 +248,8 @@ class GraphEchoStateNetwork(NodeUQModule):
         if labels.numel() > 0:
             self.log("test_acc", (preds == labels).float().mean())
             self.log("test_f1", self.f1(preds, labels))
+        scores = {f"_{kind}_{family}": buf.cat(f"{kind}_{family}") for family in _FAMILIES for kind in _KINDS}
+        self.log_test_extras({**scores, "": buf.cat("EU_credal")}, buf.cat("ood_targets"), preds, labels)
         buf.clear()
 
     def configure_optimizers(self):

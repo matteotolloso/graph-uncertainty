@@ -106,3 +106,59 @@ def test_real_small_datasets_match_their_spec(name):
     assert b.data.x.size(1) == spec.num_features
     assert b.data.y.size(1) == spec.num_id_classes
     assert split_summary(b.data)["train_id"] > 0
+
+
+def test_training_label_perturbations():
+    clean = load_dataset("synthetic", {})
+    same = load_dataset("synthetic", {"train_fraction": 1.0, "label_noise": 0.0})
+    assert same.fingerprint == clean.fingerprint and torch.equal(same.data.y, clean.data.y)
+
+    few = load_dataset("synthetic", {"train_fraction": 0.5})
+    n_train = int(clean.data.train_mask.sum())
+    assert int(few.data.train_mask.sum()) == round(0.5 * n_train)
+    assert not (few.data.train_mask & ~clean.data.train_mask).any() and few.fingerprint != clean.fingerprint
+
+    noisy = load_dataset("synthetic", {"label_noise": 0.4})
+    changed = (noisy.data.y != clean.data.y).any(dim=1)
+    assert int(changed.sum()) == round(0.4 * n_train) and not (changed & ~clean.data.train_mask).any()
+    assert torch.all(noisy.data.y.sum(dim=1)[clean.data.train_mask] == 1)  # still one ID class each
+    assert (
+        torch.equal(noisy.data.train_mask, clean.data.train_mask) and noisy.fingerprint != clean.fingerprint
+    )
+    again = load_dataset("synthetic", {"label_noise": 0.4})
+    assert torch.equal(again.data.y, noisy.data.y)  # perturb_seed makes it deterministic
+
+
+def test_csbm_controls_homophily_only():
+    from cgnn.data.sources.csbm import make_csbm_graph
+
+    low, high = make_csbm_graph(0.1), make_csbm_graph(0.9)
+    assert torch.equal(low.x, high.x) and torch.equal(low.y, high.y)
+    for graph, h in ((low, 0.1), (high, 0.9)):
+        src, dst = graph.edge_index
+        assert abs((graph.y[src] == graph.y[dst]).float().mean().item() - h) < 0.02
+        assert not (src == dst).any()
+    assert torch.equal(make_csbm_graph(0.5).edge_index, make_csbm_graph(0.5).edge_index)
+    assert "csbm_h5" in DATASETS.names()
+
+
+def test_test_feature_shift():
+    from cgnn.data.perturb import shift_test_features
+
+    data = load_dataset("synthetic", {}).data
+    before = (data.x.clone(), data.y.clone(), data.test_mask.clone())
+    shifted = shift_test_features(data, 2.0, fraction=0.5, seed=0)
+    assert all(torch.equal(a, b) for a, b in zip(before, (data.x, data.y, data.test_mask), strict=True))
+
+    is_id = data.y.sum(dim=1) == 1
+    changed = (shifted.x != data.x).any(dim=1)
+    assert torch.equal(shifted.test_mask, data.test_mask & is_id)  # real OOD nodes leave the test set
+    assert torch.equal(changed, shifted.y.sum(dim=1) != data.y.sum(dim=1))  # shifted nodes = positives
+    assert int(changed.sum()) == round(0.5 * int((data.test_mask & is_id).sum()))
+    assert not (changed & ~shifted.test_mask).any()
+    assert torch.equal(shifted.train_mask, data.train_mask) and torch.equal(shifted.val_mask, data.val_mask)
+
+    control = shift_test_features(data, 0.0)
+    assert torch.equal(control.x, data.x) and torch.equal(control.y, shifted.y)  # same nodes at every sigma
+    weak = shift_test_features(data, 1.0)
+    assert torch.allclose(2 * (weak.x - data.x), shifted.x - data.x, atol=1e-5)  # same direction, scaled

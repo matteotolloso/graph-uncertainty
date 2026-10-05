@@ -1,10 +1,10 @@
 # Campaign v0.2 — status and handoff
 
 Re-run of every experiment the 0.2 audit found affected (see `docs/known_issues.md`). Written for the next
-agent/human picking this up. Last updated: **2026-09-28 23:20 CEST**.
+agent/human picking this up. Last updated: **2026-10-01 10:40 CEST**.
 
 ## What is running
-- Queue: `scripts/gpu_queue.py` on `scripts/campaigns/v02.jobs` (85 jobs), started 2026-09-28 15:12, launched with
+- Queue: `scripts/gpu_queue.py` on `scripts/campaigns/v02.jobs` (92 jobs), started 2026-09-28 15:12, launched with
   `nohup conda run --no-capture-output -n gu python scripts/gpu_queue.py scripts/campaigns/v02.jobs --log-dir outputs/logs/v02 --prefer 6 7`.
   At most 2 GPUs (user's hard limit), 2 CPU slots.
 - Monitor: `tail outputs/logs/v02_queue.log`; status per job `outputs/logs/v02/state.json`; job logs
@@ -16,15 +16,18 @@ agent/human picking this up. Last updated: **2026-09-28 23:20 CEST**.
   Patents and Coauthor GPU jobs use `deterministic=false` (40 GB GPUs, known_issues M8).
 
 ## Progress at last update
-60/85 done, 2 running, 0 failed/blocked.
-- Done: H1 re-runs (Energy/Mahalanobis/GEBM on Squirrel + Reddit2); vanilla backbones for ArXiv (49), Coauthor
-  (81: 31 GCN from the first sweep + 50 from `vanilla-coauthor-2`), Amazon-Ratings (50), Roman-Empire (50); all
-  post-hoc baselines/CaGCN/ensembles/CGNN post train on those four; CGNN, CGNN last layer, CGNN only credal on ArXiv
-  and Coauthor.
-- Running: `vanilla-patents` (~27 min/run, 16/50 at 23:20 -> ~15 h left), `credal_LJ_dual_head_detached-patents`.
-- Waiting: Patents post-hoc (after `vanilla-patents`), `credal`/`credal_LJ` on Patents, and the M1/M2 ablations
-  (`credal_LJ0_dual_head_detached`, `credal_last_dual_head_detached`) on all 7 datasets (Squirrel ones on CPU).
-  Expect completion ~1.5-2 days after the last update.
+90/93 jobs done (the two `failed` entries are the old `knn-patents`/`knn_LJ-patents`, stopped on purpose); only
+`credal_last_dual_head_detached-reddit2` is running (39/50 runs at 10:30, ~21 min/run -> ends ~14:30 on 2026-10-01).
+- All Patents re-runs, the M1 ablation (all 7 datasets) and the M2 ablation (all but Reddit2) are done, with no
+  OOM and no crashes except the LJ0 ones below. Top-ups ran with the fixed code: Coauthor LJ0 +1 run, Reddit2 LJ0
+  +5 runs (the old sweep process crashed 5 times in total), Patents M2 needed none. No crash in any top-up run.
+- LJ0 crashes (`Sum of lower bounds for a node cannot exceed 1`, Coauthor 1, Reddit2 3): investigated and fixed
+  2026-09-30 (float32 rounding of collapsed credal intervals at high lr; known_issues M1). Running sweep processes
+  keep the old code; the top-up jobs at the end of `v02.jobs` replace every failed run of the affected sweeps with
+  the fixed code (no-op when none failed). Checked on the saved checkpoints: no selected top-5 run has
+  rounding-level intervals; some are nearly collapsed (Patents/Amazon LJ0, Patents last-dual), see known_issues.
+- **Still to do at the end:** tag the old sweeps `patents_odin`, `patents_mahalanobis`, `patents_knn`,
+  `patents_knn_LJ` `superseded` in W&B, then export the final table (CSV + LaTeX) to `outputs/tables/`.
 - Known losses (harmless): first Coauthor vanilla sweep lost 19 runs to OOM (SAGE, deterministic) -> replaced by
   `vanilla-coauthor-2`; its first Energy sweep was re-run as `energy-coauthor-2` and the old runs are tagged
   `superseded` in W&B (`cgnn results` skips them). 1 ArXiv vanilla run lost to a full root disk.
@@ -41,8 +44,8 @@ agent/human picking this up. Last updated: **2026-09-28 23:20 CEST**.
 | GEBM | 41.82 ± 0.33 | 56.29 ± 3.22 | - | 48.59 ± 0.24 | 55.08 ± 2.87 | 82.03 ± 9.56 | 52.28 ± 13.51 |
 | CaGCN | - | 68.24 ± 0.23 | - | 52.86 ± 0.03 | 72.56 ± 1.24 | 93.70 ± 0.15 | - |
 | Classical ensemble | - | 68.52 ± 0.14 | - | 49.45 ± 0.02 | 73.31 ± 0.61 | 96.50 ± 0.09 | - |
-| CGNN | - | 70.38 ± 0.52 (EU) | 55.07 ± 2.01 (partial) | - | - | 79.88 ± 3.81 | - |
-| CGNN last layer | - | 65.86 ± 0.51 | - | - | - | 62.62 ± 7.99 | - |
+| CGNN | - | 70.38 ± 0.52 (EU) | 59.80 ± 8.29 | - | - | 79.88 ± 3.81 | - |
+| CGNN last layer | - | 65.86 ± 0.51 | 59.19 ± 4.15 (partial) | - | - | 62.62 ± 7.99 | - |
 | CGNN by ensemble | - | 67.88 ± 0.06 | - | 49.15 ± 0.02 | 73.32 ± 0.74 | 95.76 ± 0.12 | - |
 | CGNN post train | - | 64.84 ± 2.58 | - | 51.13 ± 0.88 | 73.48 ± 0.84 | 65.60 ± 4.92 | - |
 | CGNN only credal | - | 63.05 ± 2.03 | - | - | - | 69.60 ± 9.08 | - |

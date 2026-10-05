@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 
+import numpy as np
 import pytest
 import torch
 
@@ -58,3 +59,19 @@ def test_auroc_degenerate_and_invalid_inputs():
 def test_micro_f1_equals_accuracy():
     preds, labels = torch.tensor([0, 1, 2, 2, 1]), torch.tensor([0, 2, 2, 2, 1])
     assert metrics.multiclass_f1(preds, labels, 3).item() == pytest.approx(0.8)
+
+
+@pytest.mark.parametrize("ties", [False, True])
+def test_aupr_and_fpr95_match_sklearn(ties):
+    sk = pytest.importorskip("sklearn.metrics")
+    g = torch.Generator().manual_seed(0)
+    targets = (torch.rand(500, generator=g) < 0.3).long()
+    scores = torch.randn(500, generator=g) + targets
+    if ties:
+        scores = (2 * scores).round()
+    assert metrics.binary_aupr(scores, targets).item() == pytest.approx(
+        sk.average_precision_score(targets.numpy(), scores.numpy()), abs=1e-6
+    )
+    fpr, tpr, _ = sk.roc_curve(targets.numpy(), scores.numpy())
+    expected = fpr[np.searchsorted(tpr, 0.95, side="left")]
+    assert metrics.fpr_at_tpr(scores, targets).item() == pytest.approx(expected, abs=1e-6)
